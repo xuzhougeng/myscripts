@@ -34,31 +34,31 @@ for line in open(argv[1]):
     feature = fields[2]
     if feature == "gene":
         gene_id = re.findall(r'gene_id=(.*?);',fields[8])[0]
-        fields[8] = "gene_id \"{}\";".format(gene_id)
+        fields[8] = "gene_id \"{}\";gene_name \"{}\";".format(gene_id, gene_id)
     elif feature == "mRNA" or feature == "transcript":
         tx_id = re.findall(r'transcript_id=(.*?)$',fields[8])[0]
         gene_id = tx_id.split(".")[0]
         fields[2] = "transcript"
-        fields[8] = "gene_id \"{}\";transcript_id \"{}\";".format(gene_id, tx_id)
+        fields[8] = "gene_id \"{}\";transcript_id \"{}\";gene_name \"{}\";".format(gene_id, tx_id, gene_id)
     elif feature == "CDS":
         tx_id = re.findall(r'protein_id=(.*?)$',fields[8])[0]
         gene_id = tx_id.split(".")[0]
-        fields[8] = "gene_id \"{}\";transcript_id \"{}\";".format(gene_id, tx_id)
+        fields[8] = "gene_id \"{}\";transcript_id \"{}\";gene_name \"{}\";".format(gene_id, tx_id, gene_id)
     elif feature == "exon":
         exon_id = re.findall(r'exon_id=(.*?);',fields[8])[0]
         tx_id = ".".join(exon_id.split(".")[0:2])
         gene_id = tx_id.split(".")[0]
-        fields[8] = "gene_id \"{}\";transcript_id \"{}\";".format(gene_id, tx_id)
+        fields[8] = "gene_id \"{}\";transcript_id \"{}\";gene_name \"{}\";".format(gene_id, tx_id, gene_id)
     elif feature == "five_prime_UTR" or feature == "five_prime_utr" or feature == "5UTR":
         fields[2] = "five_prime_utr"
         tx_id = fields[8].split(":")[1]
         gene_id = tx_id.split(".")[0]
-        fields[8] = "gene_id \"{}\";transcript_id \"{}\";".format(gene_id, tx_id)
+        fields[8] = "gene_id \"{}\";transcript_id \"{}\";gene_name \"{}\";".format(gene_id, tx_id, gene_id)
     elif feature == "three_prime_UTR" or feature == "three_prime_utr" or feature == "3UTR":
         fields[2] = "three_prime_utr"
         tx_id = fields[8].split(":")[1]
         gene_id = tx_id.split(".")[0]
-        fields[8] = "gene_id \"{}\";transcript_id \"{}\";".format(gene_id, tx_id)
+        fields[8] = "gene_id \"{}\";transcript_id \"{}\";gene_name \"{}\";".format(gene_id, tx_id, gene_id)
     else:
-        pass
+        continue
     print("\t".join(fields))
