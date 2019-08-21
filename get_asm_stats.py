@@ -28,14 +28,16 @@ def get_fasta_stats(fasta, genome_size):
         else:
             total = sum(lens)
         limit = total * stat
+        L = 0
         for num in lens:
             total -= num
+            L = L + 1
             if total <= limit:
-                return num
+                return [num, L]
 
-    asm_n50 = get_nstat(lengths, 0.50)
-    asm_n90 = get_nstat(lengths, 0.10)
-    asm_n95 = get_nstat(lengths, 0.05)
+    asm_n50,asm_l50 = get_nstat(lengths, 0.50)
+    asm_n90,asm_l90 = get_nstat(lengths, 0.10)
+    asm_n95,asm_l95 = get_nstat(lengths, 0.05)
     
     asm_min = lengths[-1]
     asm_max = lengths[0]
@@ -53,18 +55,24 @@ def get_fasta_stats(fasta, genome_size):
                    'asm_mean': asm_mean,
                    'asm_median': asm_median,
                    'asm_n50': asm_n50,
+                   'asm_l50': asm_l50,
                    'asm_n90': asm_n90,
-                   'asm_n95': asm_n95}
+                   'asm_l90': asm_l90,
+                   'asm_n95': asm_n95,
+                   'asm_l95': asm_l95}
 
     if genome_size is not None:
-        asm_ng50 = get_nstat(lengths, 0.50, genome_size)
-        asm_ng90 = get_nstat(lengths, 0.10, genome_size)
-        asm_ng95 = get_nstat(lengths, 0.05, genome_size)
+        asm_ng50,asm_lg50 = get_nstat(lengths, 0.50, genome_size)
+        asm_ng90,asm_lg90 = get_nstat(lengths, 0.10, genome_size)
+        asm_ng95,asm_lg95 = get_nstat(lengths, 0.05, genome_size)
     
 
         fasta_stats.update({'asm_ng50': asm_ng50,
+                            'asm_lg50': asm_lg50,
                             'asm_ng90': asm_ng90,
-                            'asm_ng95': asm_ng95})
+                            'asm_lg90': asm_lg90,
+                            'asm_ng90': asm_ng90,
+                            'asm_lg95': asm_lg95})
 
 
     return fasta_stats
