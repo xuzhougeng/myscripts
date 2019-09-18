@@ -1,9 +1,21 @@
 #!/bin/bash
 
-ref=$1
-gtf=$2
-db=$3
+set -e
+set -u
+set -o pipefail
 
+ref=`realpath $1`
+gtf=`realpath $2`
+db=`realpath $3`
+
+echo
+echo "Processing"
+echo reference: $ref
+echo gtf: $gtf
+echo db: $db
+echo
+
+# set the environment
 unset PERL5LIB
 module load TransDecoder/5.5
 export PATH=$PATH:/opt/biosoft/diamond
@@ -12,12 +24,12 @@ export PATH=$PATH:/opt/biosoft/diamond
 mkdir -p tmp
 
 if [ ! -f tmp/transcripts.fasta ]; then
-    gtf_genome_to_cdna_fasta.pl $2 $1 > tmp/transcripts.fasta
+    gtf_genome_to_cdna_fasta.pl $gtf $ref > tmp/transcripts.fasta
 fi
 
 # convert gtf to gff3
 if [ ! -f tmp/transcripts.gff3 ]; then
-    gtf_to_alignment_gff3.pl $2 > tmp/transcripts.gff3
+    gtf_to_alignment_gff3.pl $gtf > tmp/transcripts.gff3
 fi
 
 # predict the ORF in transcripts
