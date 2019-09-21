@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
+# fix bug: use position and ID together as the key of CDS
+# different transcripts may shared the same CDS
+
 # get the complete CDS in TransDecoder results
+
 
 import re
 import fileinput
@@ -55,6 +59,7 @@ for line in fileinput.input():
         # only keep complete and homology-supported gene
         if not re.search('complete', line):
             continue
+        # extrac the homology score
         score = re.findall("score(.*)", line)[0].split("%2C")
         if len(score) != 2:
             by_homology += 1
@@ -75,17 +80,23 @@ for line in fileinput.input():
         if content[2] == 'CDS':
             width = int(content[4]) - int(content[3])
             CDS_dict[parent].append(width)
-
-        other_dict[feature_id] = line
-
-        if parent in mRNA_other_dict:
-             mRNA_other_dict[parent].append(feature_id)
+            feature_id = '{}-{}-{}-{}-cds'.format(feature_id,content[0],content[3],content[4])
+            other_dict[feature_id] = line
+            if parent in mRNA_other_dict:
+                mRNA_other_dict[parent].append(feature_id)
+            else:
+                mRNA_other_dict[parent] = [feature_id]
         else:
-             mRNA_other_dict[parent] = [feature_id]
+            other_dict[feature_id] = line
+            if parent in mRNA_other_dict:
+                mRNA_other_dict[parent].append(feature_id)
+            else:
+                mRNA_other_dict[parent] = [feature_id]
 
 stderr.write("Number of entry filtered by homology: {}\n".format(by_homology))
 
 # filter the uncomplete mRNA
+#print(mRNA_other_dict.items())
 for gene, txs in gene_tx_dict.items():
     new_txs = []
     for tx in txs:
@@ -95,10 +106,14 @@ for gene, txs in gene_tx_dict.items():
             new_txs.append(tx)
     gene_tx_dict[gene] = new_txs
 
-
+#print(gene_tx_dict.items())
 # get the high quality geneID and mRNA ID 
 for gene, txs in gene_tx_dict.items():
     tmp = 0
+
+    if len(txs) == 0:
+        continue
+
     for tx in txs:
         tx_len = sum(CDS_dict[tx])
         if tx_len > tmp:
@@ -107,6 +122,6 @@ for gene, txs in gene_tx_dict.items():
 
     print(gene_dict[gene].strip())
     print(mRNA_dict[lst_tx].strip())     
-    for value in mRNA_other_dict[lst_tx]:
+    #print(mRNA_other_dict[lst_tx]) # for debug
+    for value in set(mRNA_other_dict[lst_tx]):
         print(other_dict[value].strip())
-
