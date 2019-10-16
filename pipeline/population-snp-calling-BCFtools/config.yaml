@@ -1,0 +1,13 @@
+# reference file configuration
+FASTA: 
+INDEX: 
+
+#True or False
+DEDUPLICATE: False
+
+CHRFILE: chr_len.txt
+VCFJOBS: 50
+# sample
+samples: samples.tsv
+depth: 20
+PLOIDY: 2

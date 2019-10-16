@@ -1,0 +1,15 @@
+# reference file configuration
+FASTA: /data/reference/genome/TAIR10/Athaliana.fa
+INDEX: /data/reference/index/bwa/TAIR10/Athaliana
+snpeff: /opt/biosoft/snpEff/snpEff.jar
+GATK: /opt/biosoft/gatk-4.0.9.0/gatk
+SnpEffDB: Arabidopsis_thaliana
+
+# pooled sample
+POOLED: 30
+
+# The list of samples to be processed
+wildtype: s5811-H_NDSW45929
+mutation: s5811-M_NDSW45928
+threshold: 0.3
+depth: 20
