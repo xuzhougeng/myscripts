@@ -53,16 +53,8 @@ DEDUPLICATE: False
 CHRFILE: ref/chr_len.txt
 # 染色体拆分
 VCFJOBS: 50
-# 样 file configuration
-FASTA: 
-INDEX: 
 
-#True or False
-DEDUPLICATE: False
-
-CHRFILE: chr_len.txt
-VCFJOBS: 50
-# sample
+# 样本名信息
 samples: samples.tsv
 depth: 20
 PLOIDY: 2
