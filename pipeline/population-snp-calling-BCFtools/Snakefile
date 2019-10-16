@@ -162,7 +162,7 @@ rule singleVCF:
         --redo-BAQ --min-BQ 30 \
         --per-sample-mF \
         --annotate FORMAT/AD,FORMAT/DP \
-        --regions params.interval} \
+        --regions {params.interval} \
         -Ou {input}  | \
         bcftools call -mv -Ob -o {output}
 	"""
