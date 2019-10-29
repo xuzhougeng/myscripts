@@ -14,5 +14,7 @@ snakemake
 
 Requirement:
 
+- fastp
 - Bwa
-- Samtools
+- Samtools >= 1.8
+
