@@ -20,8 +20,8 @@ LOG_DIR     = join("analysis", "log")
 
 shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {ALLHIC_DIR} {LOG_DIR}")
 
-ALL_READ1 = expand(join(CLEAN_DIR, "{part}." + R1NM), part=[ str(i) for i in range(1, SIZE + 1)])
-ALL_READ2 = expand(join(CLEAN_DIR, "{part}." + R2NM), part=[ str(i) for i in range(1, SIZE + 1)])
+ALL_READ1 = expand(join(CLEAN_DIR, "{part}." + R1NM), part=[ str(i).zfill(4) for i in range(1, SIZE + 1)])
+ALL_READ2 = expand(join(CLEAN_DIR, "{part}." + R2NM), part=[ str(i).zfill(4) for i in range(1, SIZE + 1)])
         
            
 rule all:
@@ -94,8 +94,9 @@ rule bwa_sampe:
         r2 = join(CLEAN_DIR, "{part}." + R2NM)
     output:
         join(ALIGN_DIR, "{part}.bwa_aln.bam")
+    log: join(LOG_DIR, "{part}.bwa_sampe.log")
     shell:"""
-        bwa sampe {input.ref} {input.s1} {input.s2} {input.r1} {input.r2} | samtools sort  > {output}
+        bwa sampe {input.ref} {input.s1} {input.s2} {input.r1} {input.r2} 2> {log} | samtools sort  > {output}
     """
 
 rule merge:
@@ -115,7 +116,7 @@ rule preprocess:
     params:
         RE = "MBOI" 
     output:
-        join(ALLHIC_DIR, "
+        join(ALLHIC_DIR, "clean.bam")
     shell:"""
         PreprocessSAMs.pl {input.bam} {input.ref} {params.RE} && \
         filterBAM_forHiC.pl bwa_aln.REduced.paired_only.bam clean.sam && \
