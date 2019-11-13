@@ -104,7 +104,7 @@ rule merge:
         expand(join(ALIGN_DIR, "{part}.bwa_aln.bam"),
            part=[str(i).zfill(4) for i in range(1,SIZE+1)] )
     output:
-       join(ALIGN_DIR, "bwa_aln.bam")
+       join(ALLHIC_DIR, "bwa_aln.bam")
     shell:"""
         samtools merge {output} {input}
     """
