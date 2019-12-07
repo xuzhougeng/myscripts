@@ -25,7 +25,7 @@ ALL_READ2 = expand(join(CLEAN_DIR, "{part}." + R2NM), part=[ str(i).zfill(4) for
         
            
 rule all:
-    input: join(ALIGN_DIR,"bwa_aln.bam")
+    input: join(ALLHIC_DIR,"bwa_aln.bam")
 
 rule build_fa_index:
     input:  FASTA

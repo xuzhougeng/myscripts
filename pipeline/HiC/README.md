@@ -18,3 +18,4 @@ Requirement:
 - Bwa
 - Samtools >= 1.8
 
+The output is bwa_aln.bam
