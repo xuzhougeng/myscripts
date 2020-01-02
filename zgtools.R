@@ -1,5 +1,5 @@
 # fix the dependent problem
-fxxkit <- function(){
+fix <- function(){
   
   # set the language to english
   env <- Sys.getenv("LANGUAGE")
