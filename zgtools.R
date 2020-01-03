@@ -1,5 +1,5 @@
 # fix the dependent problem
-fix <- function(){
+fixit <- function(){
   
   # set the language to english
   env <- Sys.getenv("LANGUAGE")
