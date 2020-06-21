@@ -33,7 +33,7 @@ for ((i=1; i<=${round};i++)); do
 	samtools index -@ 20 sgs.sort.bam;
 	samtools faidx ${input};
 	#polish genome file
-	python $NextPolish/lib/nextPolish1.py -g ${input} -t 1 -p ${threads} -s sgs.sort.bam > genome.polishtemp.fa;
+	python $NextPolish/lib/nextpolish1.py -g ${input} -t 1 -p ${threads} -s sgs.sort.bam > genome.polishtemp.fa;
 	input=genome.polishtemp.fa;
 #step2:
 	#index genome file and do alignment
