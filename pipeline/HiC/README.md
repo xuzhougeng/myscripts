@@ -17,5 +17,6 @@ Requirement:
 - fastp
 - Bwa
 - Samtools >= 1.8
+- ALLHiC
 
 The output is bwa_aln.bam

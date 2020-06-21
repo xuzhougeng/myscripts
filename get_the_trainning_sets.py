@@ -9,6 +9,7 @@
 import re
 import fileinput
 from sys import stderr
+from sys import argv
 from collections import defaultdict
 
 # filter info count

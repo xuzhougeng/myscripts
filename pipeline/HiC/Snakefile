@@ -25,7 +25,8 @@ ALL_READ2 = expand(join(CLEAN_DIR, "{part}." + R2NM), part=[ str(i).zfill(4) for
         
            
 rule all:
-    input: join(ALLHIC_DIR,"bwa_aln.bam")
+    #input: join(ALLHIC_DIR,"bwa_aln.bam")
+    input: join(ALLHIC_DIR,"clean.bam")
 
 rule build_fa_index:
     input:  FASTA
@@ -96,7 +97,7 @@ rule bwa_sampe:
         join(ALIGN_DIR, "{part}.bwa_aln.bam")
     log: join(LOG_DIR, "{part}.bwa_sampe.log")
     shell:"""
-        bwa sampe {input.ref} {input.s1} {input.s2} {input.r1} {input.r2} 2> {log} | samtools sort  > {output}
+        bwa sampe {input.ref} {input.s1} {input.s2} {input.r1} {input.r2} 2> {log} | samtools sort -@ 10 > {output}
     """
 
 rule merge:
@@ -114,13 +115,14 @@ rule preprocess:
         bam = rules.merge.output,
         ref = FASTA
     params:
-        RE = "MBOI" 
+        RE = "MBOI", 
+        DIR = ALLHIC_DIR
     output:
         join(ALLHIC_DIR, "clean.bam")
     shell:"""
         PreprocessSAMs.pl {input.bam} {input.ref} {params.RE} && \
-        filterBAM_forHiC.pl bwa_aln.REduced.paired_only.bam clean.sam && \
-        samtools view -bt {input.ref}.fai clean.sam > clean.bam && \
-        rm -f clean.sam       
+        filterBAM_forHiC.pl {params.DIR}/bwa_aln.REduced.paired_only.bam {params.DIR}/clean.sam && \
+        samtools view -bt {input.ref}.fai {params.DIR}/clean.sam > {params.DIR}/clean.bam && \
+        rm -f {params.DIR}/clean.sam       
     """
 
