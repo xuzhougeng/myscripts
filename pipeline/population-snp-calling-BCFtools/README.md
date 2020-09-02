@@ -27,7 +27,8 @@ samtools faidx ref.fa
 Step3: prepare the chr_len.txt,  two columns, contig name and its length
 
 ```bash
-seqkit fx2tab -nli ref.fa | sort -k 2,2nr > chr_len.txt
+cut -f 1,2 ref.fa.fai > chr_len.txt
+#seqkit fx2tab -nli ref.fa | sort -k 2,2nr > chr_len.txt
 ```
 
 Step4: prepare the samples.tsv
