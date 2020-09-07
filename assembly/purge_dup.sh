@@ -1,3 +1,10 @@
+#!/bin/bash
+
+if [ $# -lt 2 ];then
+	echo "$0 pb_asm.fa input.fofn"
+	exit 1
+fi
+
 asm=$1
 fofn=$2
 
