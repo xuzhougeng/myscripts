@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# For more information, please visit
+# https://hicexplorer.readthedocs.io/en/latest/content/example_usage.html
+
 set -e
 set -u
 set -o pipefail
@@ -48,7 +51,7 @@ bwa mem -t $THREADS -A1 -B4 -E50 -L0 reference/genome.fa $R2 2> bwa_mem_R2.log |
 # build matrix from independently mated read pairs
 # the restriction sequence GATC is recognized by the DpnII restriction enzyme
 
-$ hicBuildMatrix --samFiles bwa_mem_R1.bam bwa_mem_R2.bam \
+hicBuildMatrix --samFiles bwa_mem_R1.bam bwa_mem_R2.bam \
                  --binSize 10000 \
                  --restrictionSequence $ENZYME \
                  --danglingSequence $ENZYME \

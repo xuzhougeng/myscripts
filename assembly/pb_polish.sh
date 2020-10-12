@@ -22,6 +22,7 @@ round=3
 NextPolish=/opt/biosoft/NextPolish-1.2.2
 module load samtools/1.10
 module load bwa/0.7.17
+module load racon
 
 if [ ! -f genome.lgspolish.fa ]; then
     minimap2 -x map-pb -t ${threads} ${genome} ${lgsreads} -o tmp.paf

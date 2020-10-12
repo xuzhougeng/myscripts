@@ -16,7 +16,7 @@ def get_opt():
 	group.add_argument("-m", "--bam", help="Input mapping file, in1.bam in2.bam ...", required=False, nargs = "*")
 	group.add_argument("-w", "--bigwig", help="Input bigwig file, in1.bw in2.bw ...", required=False, nargs = "*")
 	group.add_argument("-b", "--bed", help="bed annotation", required=False)
-	group.add_argument("-g", "--gtf", help="gtf annotation", required=False)
+	group.add_argument("-g", "--gtf", help="gtf annotation", required=False, nargs = "*")
 	
 	return group.parse_args()
 
@@ -56,8 +56,10 @@ def build_bw_tracks(bigwigs):
     tracks = "".join(tracks)[:-1]
     return tracks
 
-def build_gtf_tracks(gtf):
-    track = """
+def build_gtf_tracks(gtfs):
+    tracks =  [] 
+    for gtf in gtfs:
+        track = """
 	{{
 	    type: "annotation",
             format: "gtf",
@@ -66,9 +68,10 @@ def build_gtf_tracks(gtf):
             visibilityWindow: 500000,
             displayMode: "COLLAPSED",
             autoHeight: true
-	}}
-	""".format(gtf = gtf)
-    return track
+	}},""".format(gtf = gtf)
+        tracks.append(track)
+    tracks = "".join(tracks)[:-1]	
+    return tracks
 
 def build_bed_tracks(bed):
     track = """
@@ -137,10 +140,10 @@ def make_html(genome, tracks):
     return html
 
 def write_html(html):
-    with open("igv.html", "w") as file:
+    with open("index.html", "w") as file:
         file.writelines(html)
 
-def igv_web(fasta, bams, bws, bed, gtf):
+def igv_web(fasta, bams, bws, bed, gtfs):
 
     tracks = ""
     genome_track = build_ref_track(fasta)
@@ -151,8 +154,8 @@ def igv_web(fasta, bams, bws, bed, gtf):
     if bws is not None:
         bw_tracks = build_bw_tracks(bws)
         tracks = tracks + ",\n" + bw_tracks
-    if gtf is not None:
-        gtf_track = build_gtf_tracks(gtf)
+    if gtfs is not None:
+        gtf_track = build_gtf_tracks(gtfs)
         tracks = tracks + ",\n" + gtf_track
     if bed is not None:
         bed_track = build_bed_tracks(bed)
@@ -166,7 +169,7 @@ if __name__ == "__main__":
      bams = opts.bam
      fasta = opts.ref
      bed = opts.bed
-     gtf = opts.gtf
+     gtfs = opts.gtf
      bws = opts.bigwig
-     igv_web(fasta, bams, bws,  bed, gtf)
+     igv_web(fasta, bams, bws,  bed, gtfs)
 
