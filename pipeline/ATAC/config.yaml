@@ -1,0 +1,9 @@
+
+FASTA: reference/Mpolymorpha_320_v3.0.fa
+INDEX: reference/Mpolymorpha
+GFF: reference/Mpolymorpha_320_v3.1.gene.gff3
+GENOMESIZE: 2.2e8
+
+ADAPTER: "CTGTCTCTTATACACATCT"
+
+SAMPLES: samples.txt

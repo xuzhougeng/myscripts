@@ -1,0 +1,272 @@
+"""
+Author: xuzhougeng
+Affiliation: SIPPE
+Aim: A snakemake workflow to analysis ATAC-seq
+Run: snakemake -s Snakefile
+"""
+
+# Globals-----------------------------------------------------------------------
+from os.path import join
+
+## reference file configuration
+configfile: "config.yaml"
+FASTA    = config['FASTA']
+GFF      = config['GFF']
+INDEX    = config['INDEX']
+ADAPTER  = config["ADAPTER"]
+GENOMESIZE = config["GENOMESIZE"]
+
+# make workding directory
+RAW_DIR   = join("analysis", "00-raw-data")
+CLEAN_DIR = join("analysis", "01-clean-data")
+ALIGN_DIR = join("analysis", "02-read-alignment")
+PEAK_DIR  = join("analysis", "03-peak-calling")
+BW_DIR    = join("analysis", "04-bigwig")
+VIS_DIR   = join("analysis", "05-visulization")
+TMPDIR    = join("analysis", "tmp")
+LOGDIR    = join("analysis", "log")
+QC_DIR    = join("report")
+
+shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {PEAK_DIR} {BW_DIR} {VIS_DIR} {TMPDIR} {LOGDIR} {QC_DIR} ")
+
+## The list of samples to be processed
+SAMPLES = [ sample.strip() for sample in open(config['SAMPLES']) ] 
+ALL_PEAKS = expand(join(PEAK_DIR, "{sample}_peaks.narrowPeak"), sample=SAMPLES)
+ALL_BWS = expand(join(BW_DIR, "{sample}.bw"), sample=SAMPLES)
+ALL_PDF = [join(VIS_DIR, "correlation_spearman_bwscore_scatterplot.pdf"),
+           join(VIS_DIR, "correlation_spearman_bwscore_heatmapplot.pdf"),
+	       join(VIS_DIR, "scale_region.pdf"),
+	       join(VIS_DIR, "scale_region_persample.pdf"),
+	       join(VIS_DIR, "reference_point_region.pdf"),
+	       join(VIS_DIR, "reference_opint_region_persample.pdf")
+        ]
+
+# Rules------------------------------------------------------------------------
+
+rule all:
+    input: ALL_PEAKS, ALL_PDF
+
+rule gff2bed:
+    input:
+        gff = GFF
+    output:
+        bed = join(VIS_DIR, "gene.bed")
+    shell: """
+	awk 'BEGIN{{OFS="\t"}}; $3 == "gene" {{match($9, /ID=(.*?);/,ID) ; print $1,$4-1,$5,ID[1],$6,$7 }}' {input} > {output}
+	"""
+
+#rule build_index
+
+rule data_clean:
+    input:
+        r1 = join(RAW_DIR, "{sample}_1.fq.gz"),
+        r2 = join(RAW_DIR, "{sample}_2.fq.gz")
+    params:
+        adapter = ADAPTER,
+        length  = 50,
+        quality = 20,
+        prefix  = lambda wildcards: join(QC_DIR, wildcards.sample)
+    output:
+        r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
+        r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
+    log: join(LOGDIR, "{sample}_fastp.log")
+    threads: 4
+    message: "----- processing {input.r1} and {input.r2} with fastp ------"
+    shell: """
+	    fastp --thread {threads} \
+		-a {params.adapter} \
+		-i {input.r1} -I {input.r2} \
+		-o {output.r1} -O {output.r2} \
+		-j {params.prefix}.json \
+		-h {params.prefix}.html \
+		2> {log}
+    """
+
+rule read_align:
+    input:
+        r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
+        r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
+    params:
+        index  = INDEX,
+        #rg     = r"@RG\tID:{sample}\tSM:{sample}\tPL:ILLUMINA",
+    output:
+        join(ALIGN_DIR, "{sample}_sorted.bam"),
+    log:
+        log1=join(LOGDIR, "{sample}_align_warning.log"),
+    threads: 20
+    message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
+    shell:"""
+        module load bowtie/2.3.4.3
+        module load samtools/1.10
+        bowtie2 -p {threads} -x {params.index} \
+            -1 {input.r1} -2 {input.r2} 2> {log.log1} | \
+        samtools sort -@ {threads} -O bam -o {output} - && \
+        samtools index -@ {threads} {output}  
+    """
+
+# mark duplication in bam
+rule markdup:
+    input:
+        join(ALIGN_DIR, "{sample}_sorted.bam"),
+    output:
+        join(ALIGN_DIR, "{sample}_markdup.bam"),
+    threads: 4
+    log:
+        join(LOGDIR, "{sample}_sambamba.log"),
+    message: "----- mark duplication in {input} with sambamba ------"
+    shell:"""
+	    sambamba markdup -t {threads} {input} {output} 2> {log}
+	"""
+
+# filter duplcation, multi-mappers, low_quality reads with samtools
+rule filtration:
+    input:
+        join(ALIGN_DIR, "{sample}_markdup.bam"),
+    output:
+        join(ALIGN_DIR, "{sample}_flt.bam")
+    threads: 20
+    message: "----- filter duplcation, multi-mappers, low_quality reads with samtools -----"
+    shell:"""
+        module load samtools/1.10
+        samtools view -@ {threads} -bF 1804 -q 20 {input} -o {output} && \
+        samtools index -@ {threads} {output} 
+    """
+
+# covert bam to bigwig for genome browse
+rule bam2bw:
+    input:
+        join(ALIGN_DIR, "{sample}_flt.bam"),
+    output:
+        join(BW_DIR, "{sample}.bw")
+    params:
+        binsize = "10",
+        method  = "BPM"
+    threads: 10
+    log:
+        join(LOGDIR, "{sample}_bw.log")
+    shell:"""
+	module load deeptools/2.0
+    bamCoverage -b {input} \
+        --binSize {params.binsize} \
+        --numberOfProcessors {threads} \
+        -o {output} --normalizeUsing {params.method} 2> {log}
+    """
+
+# compute matrix
+rule scale_region_matrix:
+    input:
+        bw = ALL_BWS,
+        bed = rules.gff2bed.output.bed
+    output:
+        join(VIS_DIR, "matrix_scale_region.scale.gz")
+    threads: 20
+    shell:"""
+	module load deeptools/2.0
+    computeMatrix scale-regions \
+    -S {input.bw} \
+    -R {input.bed} \
+    --regionBodyLength 2000 \
+    --beforeRegionStartLength 3000 --afterRegionStartLength 3000 \
+    --skipZeros --numberOfProcessors {threads} \
+    -o {output}
+    """
+
+rule reference_potin_matrix:
+    input:
+        bw = ALL_BWS,
+        bed = rules.gff2bed.output.bed
+    output:
+        join(VIS_DIR, "mmatrix_reference_point.reference.gz")
+    threads: 20
+    shell:"""
+	module load deeptools/2.0
+    computeMatrix reference-point \
+    -S {input.bw} \
+    -R {input.bed} \
+    --referencePoint TSS \
+    -b 3000 -a 3000 \
+    --skipZeros --numberOfProcessors {threads} \
+    -o {output}
+    """
+
+rule matrix_vis:
+    input:
+        m1 = rules.scale_region_matrix.output,
+        m2 = rules.reference_potin_matrix.output
+    output:
+	    p1 = join(VIS_DIR, "scale_region.pdf"),
+	    p2 = join(VIS_DIR, "scale_region_persample.pdf"),
+	    p3 = join(VIS_DIR, "reference_point_region.pdf"),
+	    p4 = join(VIS_DIR, "reference_opint_region_persample.pdf")
+    shell:"""
+	module load deeptools/2.0
+	plotProfile -m {input.m1} -out {output.p1} --perGroup
+	plotProfile -m {input.m1} -out {output.p2} --numPlotsPerRow 4
+	plotProfile -m {input.m2} -out {output.p3} --perGroup
+	plotProfile -m {input.m2} -out {output.p4} --numPlotsPerRow 4
+    """
+
+# mulitple bigiwig summary
+rule multi_bigwig_summary:
+    input:
+         ALL_BWS
+    output:
+        join(VIS_DIR, "multibw_results.npz")
+    threads: 20
+    shell:"""
+	module load deeptools/2.0
+    multiBigwigSummary bins -b {input} \
+      --numberOfProcessors {threads} \
+      -o {output}
+    """
+
+rule correlation_scatter:
+    input:
+        join(VIS_DIR, "multibw_results.npz")
+    output:
+        join(VIS_DIR, "correlation_spearman_bwscore_scatterplot.pdf")
+    shell:"""
+	module load deeptools/2.0
+    plotCorrelation -in {input} \
+      --corMethod spearman --skipZeros \
+      --whatToPlot scatterplot \
+      --plotTitle "Spearman Correlation" \
+      --removeOutliers \
+      --plotFile {output}
+    """
+
+rule correlation_heatmap:
+    input:
+        join(VIS_DIR, "multibw_results.npz")
+    output:
+        join(VIS_DIR, "correlation_spearman_bwscore_heatmapplot.pdf")
+    shell:"""
+	module load deeptools/2.0
+    plotCorrelation -in {input} \
+      --corMethod spearman --skipZeros \
+      --whatToPlot heatmap \
+      --plotTitle "Spearman Correlation" \
+      --removeOutliers \
+      --plotNumbers \
+      --plotFile {output}
+    """
+
+# calling peak from bam
+rule call_peak:
+    input:
+        join(ALIGN_DIR, "{sample}_flt.bam")
+    output:
+        join(PEAK_DIR, "{sample}_peaks.narrowPeak")
+    params:
+        outdir = PEAK_DIR,
+        prefix = "{sample}",
+        genomesize = GENOMESIZE
+    log:
+        join(LOGDIR, "{sample}_macs2.log")
+    shell:"""
+	module load MACS/2.1.2
+	macs2 callpeak -t {input} -f BAMPE \
+        -n {params.prefix} \
+        -g {params.genomesize} \
+        --outdir {params.outdir} 2> {log}
+    """
