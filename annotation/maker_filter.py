@@ -1,58 +1,117 @@
 #!/usr/bin/env python3
+
+"""
+filter the maker output gff by:
+    - AED
+    - eAED
+    - QI
+"""
+
 import re
 import sys
+import argparse
 
-if len(sys.argv) < 3:
-    sys.exit()
 
-gff = open(sys.argv[1])
-prf = sys.argv[2]
+def get_opt():
+    group = argparse.ArgumentParser()
+    group.add_argument("-c", "--ss", type = float, default = -1, 
+            help = "The faction of splice sites confirmed by an EST alignment, default -1", required = False)
+    group.add_argument("-e", "--exon", type = float, default = -1, 
+            help = "The faction of exons that overlap an EST alignment, default -1", required = False)
+    group.add_argument("-o", "--exon2", type = float, default = -1, 
+            help = "The faction of exons that overlap an EST/Protein alignment, default -1", required = False)
+    group.add_argument("-a", "--ss2", type = float, default = -1, 
+            help = "The faction of splice sites confirmed by an ab-initio prediction, default -1", required = False)
+    group.add_argument("-t", "--exon3", type = float, default = -1, 
+            help = "The faction of exon confirmed by an ab-initio prediction, default -1", required = False)
+    group.add_argument("-l", "--length", type = int, default = 10, 
+            help = "The min length of the protein sequence produced by the mRNA", required = False)
+    group.add_argument("-d", "--AED", type = float, default = 1, required = False,
+            help = "Max AED  to allow, default is 1")
+    group.add_argument("gff", help = "input gff file")
+    return group.parse_args()
 
-count = 0
-mRNA  = 0
-cds   = 0
-exon  = 0
-five_prime_UTR = 0
-three_prime_UTR = 0
+def is_high_confidence(AED, QI, thrAED, thresh):
+    flag = True
+    if AED > float(thrAED):
+        flag = False
+    QI = QI.split('|') 
+    QI = QI[1:6] + QI[8:]
+    for i in range(0,len(thresh)):
+        if float(QI[i]) < float(thresh[i]):
+            flag = False
+            break
+    return flag
 
-print("##gff-version 3.2.1")
-for line in gff:
-    if not line.startswith("\n"):
-        records = line.split("\t")
-        records[1] = "."
-    if re.search(r"\tgene\t", line):
-        count = count + 1
-        mRNA  = 0
-        gene_id = prf + str(count).zfill(5)
-        records[8] = "ID={}".format(gene_id)
-    elif re.search(r"\tmRNA\t", line):
-        three_prime_UTR = 0
-        five_prime_UTR = 0
-        cds   = 0
-        exon  = 0
-        mRNA  = mRNA + 1
-        mRNA_id    = gene_id + "." + str(mRNA)
-        records[8] = "ID={};Parent={}".format(mRNA_id, gene_id)
-    elif re.search(r"\five_prime_UTR\t", line):
-        five_prime_UTR     = five_prime_UTR + 1
-        five_prime_UTR_id  = mRNA_id + "_five_prime_UTR_" + str(five_prime_UTR)
-        records[8] = "ID={};Parent={}".format(five_prime_UTR_id, mRNA_id)
-    elif re.search(r"\three_prime_UTR\t", line):
-        three_prime_UTR     = three_prime_UTR + 1
-        three_prime_UTR_id  = mRNA_id + "_three_prime_UTR_" + str(three_prime_UTR)
-        records[8] = "ID={};Parent={}".format(three_prime_UTR_id, mRNA_id)
-    elif re.search(r"\texon\t", line):
-        exon     = exon + 1
-        exon_id  = mRNA_id + "_exon_" + str(exon)
-        records[8] = "ID={};Parent={}".format(exon_id, mRNA_id)
-    elif re.search(r"\tCDS\t", line):
-        cds     = cds + 1
-        cds_id  = mRNA_id + "_cds_" + str(cds)
-        records[8] = "ID={};Parent={}".format(cds_id, mRNA_id)
-    else:
-        continue
+def parse_anno(col):
+    """
+    parse the annotation column, and return a dict
+    """
+    anno = re.split('[;=]', col)
+    if anno[-1] == '':
+        anno.pop()
 
-    print("\t".join(records))
+    anno_dict = {}
+    for i in range(0, len(anno), 2):
+        anno_dict[anno[i]] = anno[i+1]
+    return anno_dict
 
-gff.close()
 
+def parse_gff(gff, thrAED, thresh):
+    """
+    parse the gff file 
+    """
+    good_gene = set()
+    good_mRNA = set()
+    for line in open(gff, "r"):
+        if line.startswith("#"):
+            continue
+
+        line = line.strip()
+        cols = line.split('\t')
+        if cols[2] != "mRNA":
+            continue
+
+        anno_dict = parse_anno(cols[8])
+        AED = float(anno_dict['_AED'])
+        QI  = anno_dict['_QI']
+
+        if is_high_confidence(AED, QI, thrAED, thresh):
+            good_mRNA.add(anno_dict['ID'])
+            good_gene.add(anno_dict['Parent'])
+        #print(good_gene)
+
+    return (good_gene, good_mRNA)
+
+def filter_gff(gff, good_gene, good_mRNA):
+    """
+    filter the gff by the gene list and mRNA list
+    """
+
+    for line in open(gff, "r"):
+        if line.startswith("#"):
+            continue
+        line = line.strip()
+        cols = line.split('\t')
+
+        anno_dict = parse_anno(cols[8])
+
+        if cols[2] == 'gene':
+            if anno_dict['ID'] in good_gene:
+                print(line)
+            else:
+                continue
+        else:
+            if anno_dict['ID'] in good_mRNA:
+                print(line)
+            else:
+                continue
+
+if __name__ == "__main__":
+    opts = get_opt()
+    gff = opts.gff
+    thrAED = opts.AED
+    thresh = [opts.ss, opts.exon, opts.exon2, opts.ss2, opts.exon3, opts.length]
+
+    good_gene,good_mRNA = parse_gff(gff, thrAED, thresh)
+    filter_gff(gff, good_gene, good_mRNA)
