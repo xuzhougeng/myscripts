@@ -1,0 +1,221 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+my $usage = "
+USAGE:
+     gff3_preds2models <maker.gff3> <list_of_ids.txt>
+
+     This script will convert match/match_part gene predictions identified in a
+     list file into gene/mRNA/exon/CDS gene models.
+
+";
+
+my $gff_file = shift;
+my $id_file = shift; #file to get IDs from
+
+if(!$gff_file || ! -f $gff_file || ! $id_file || ! -f $id_file){
+    print $usage;
+    exit();
+}
+
+my $all = parse_gff($gff_file);
+
+my $alias = {};
+foreach my $f (values %$all){
+    if(my $name = $f->{attributes}{Name}){
+	$alias->{$name} = $f;
+    }
+}
+
+my @selected;
+open(IN, "<  $id_file");
+while(my $line = <IN>){
+    chomp $line;
+    $line =~ s/^\s+|\s+$//g;
+    
+    my $f = $all->{$line};
+    $f = $alias->{$line} if(!$f);
+
+    if(! $f){
+	warn "**WARNING: No top level feature found for ID $line\n";
+	next;
+    }
+
+    $f = convert_feature($f);
+    dump_feature($f);
+}
+close(IN);
+
+sub convert_feature{
+    my $f = shift;
+
+    return unless($f->{type} eq 'match');
+
+    $f->{type} = 'mRNA';
+    $f->{attributes}{ID} = $f->{attributes}{Name};
+
+    my $i = 1;
+    my @cds;
+    foreach my $c (@{$f->{children}}){
+	$c->{type} = 'exon';
+	$c->{attributes}{Parent} = [$f->{attributes}{ID}];
+	$c->{attributes}{ID} = $f->{attributes}{ID}.':exon-'.$i++;
+	delete($c->{attributes}{Target});
+	delete($c->{attributes}{Gap});
+	delete($c->{attributes}{Name});
+
+	my %n = (seqid => $c->{seqid},
+		 source => $c->{source},
+		 type => 'CDS',
+		 start => $c->{start},
+		 end => $c->{end},
+		 score => '.',
+		 strand => $f->{strand},
+		 phase => '.',
+		 attributes => {ID => $f->{attributes}{ID}.':cds',
+				Parent => [$f->{attributes}{ID}]});
+	push(@cds, \%n)
+    }
+
+    @cds = sort {$a->{start} <=> $b->{start}} @cds;
+    @cds = reverse(@cds) if($f->{strand} eq '-');
+
+    my $p = 0;
+    foreach my $n (@cds){
+	$n->{phase} = $p;
+
+	$p = (3 - ((abs($n->{end}-$n->{start})+1) - $p) % 3) % 3;
+    }
+
+    push(@{$f->{children}}, @cds);
+
+    my $t = {seqid => $f->{seqid},
+	     source => $f->{source},
+	     type => 'gene',
+	     start => $f->{start},
+	     end => $f->{end},
+	     score => '.',
+	     strand => $f->{strand},
+	     phase => '.',
+	     attributes => {ID => $f->{attributes}{ID}}};
+
+    $t->{attributes}{ID} =~ s/\-mRNA\-\d+$//;
+    
+    if($t->{attributes}{ID} eq $f->{attributes}{ID}){
+	$t->{attributes}{ID} = $f->{attributes}{ID}.'-gene';
+    }
+    $t->{attributes}{Name} = $t->{attributes}{ID};
+
+    $f->{attributes}{Parent} = [$t->{attributes}{ID}];
+    $t->{children} = [$f];
+
+    return $t;
+}
+
+sub dump_feature{
+    my $f = shift;
+
+    if(! $f->{dumped}){
+        print $f->{seqid}."\t";
+        print $f->{source}."\t";
+        print $f->{type}."\t";
+        print $f->{start}."\t";
+        print $f->{end}."\t";
+        print $f->{score}."\t";
+        print $f->{strand}."\t";
+        print $f->{phase}."\t";
+
+        my @atts;
+        while(my $key = each %{$f->{attributes}}){
+            next if(! $key);
+            my $att = "$key=";
+            if(ref($f->{attributes}{$key}) eq 'ARRAY'){
+                $att .= join(',', @{$f->{attributes}{$key}});
+            }
+            else{
+                $att .= $f->{attributes}{$key};
+            }
+            push(@atts, $att);
+        }
+        print join(';', @atts)."\n";
+        $f->{dumped}++;
+    }
+    else{
+	return;
+    }
+
+    foreach my $s (@{$f->{children}}){
+	dump_feature($s);
+    }
+}
+
+sub parse_gff {
+    my $ann_file = shift;
+
+    my %top_index;
+    my %id_index;
+    my %famtree;
+    open(IN, "< $ann_file");
+    while(my $line = <IN>){
+	last if($line =~ /^>/);
+	next if($line =~ /^\#/);
+	chomp($line);
+	next if(!$line);
+
+	my @F = split(/\t/, $line);
+	next if(@F != 9);
+
+	next unless($F[1] =~ /snap|genemark|augustus|model_gff|pred_gff/);
+
+	my %att;
+	foreach my $a (split(/\;/, $F[8])){
+	    $a =~ s/^\s+//;
+	    $a =~ s/\s+$//;
+	    next unless($a);
+	    my ($key, $value) = split(/=/, $a);
+
+	    if($key =~ /^(ID|Name|Target|Gap|Derives_from|Is_circular)$/){
+		$att{$key} = $value;
+	    }
+	    else{
+		$att{$key} = [split(/\,/, $value)];
+	    }
+	}
+	
+	my %f = (seqid => $F[0],
+		 source => $F[1],
+		 type => $F[2],
+		 start => $F[3],
+		 end => $F[4],
+		 score => $F[5],
+		 strand => $F[6],
+		 phase => $F[7],
+		 attributes => \%att);
+
+	if($f{attributes}{ID} && !$f{attributes}{Parent}){
+	    $top_index{$f{attributes}{ID}}  = \%f;
+	}
+	
+	if($f{attributes}{ID}){
+	    my $id = $f{attributes}{ID};
+	    if($id_index{$id} && $id_index{$id}{children}){
+		my $children = $id_index{$id}{children};
+		$id_index{$id} = \%f;
+		$id_index{$id}{children} = $children;
+	    }
+	    else{
+		$id_index{$id} = \%f;
+	    }
+	}
+	
+	if($f{attributes}{Parent}){
+	    foreach my $p (@{$f{attributes}{Parent}}){
+		push(@{$id_index{$p}{children}}, \%f);
+	    }
+	}
+    }
+    close(IN);
+
+    return \%top_index;
+}

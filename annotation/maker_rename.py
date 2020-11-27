@@ -3,7 +3,7 @@
 """
 一个非常简单的脚本，主要目的是将maker_map_ids输出的编号，改成类似于AT1G10010这种形式
 输入参数为两个, maker_map_ids的输出文件, 还有你的物种名的缩写, 例如Athaliana-> AT, Alyrata->AL
-scaffold，则是用z表示
+scaffold，则是用U表示
 """
 
 import re
@@ -47,7 +47,7 @@ for line in lines:
 gene_count = 0
 for line in lines[count:]:
     raw_name = line.split("\t")[0]
-    chr_id = "z"
+    chr_id = "U"
     if raw_name.find("mRNA") >=0:
         mRNA_count = raw_name.split("-")[6]
         print("{}\t{}{}G".format(raw_name, prefix, chr_id) + str(gene_count).zfill(4) + "0." + str(mRNA_count ) )

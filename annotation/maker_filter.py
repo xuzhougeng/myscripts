@@ -24,10 +24,12 @@ def get_opt():
             help = "The faction of splice sites confirmed by an ab-initio prediction, default -1", required = False)
     group.add_argument("-t", "--exon3", type = float, default = -1, 
             help = "The faction of exon confirmed by an ab-initio prediction, default -1", required = False)
-    group.add_argument("-l", "--length", type = int, default = 10, 
+    group.add_argument("-l", "--length", type = int, default = 0, 
             help = "The min length of the protein sequence produced by the mRNA", required = False)
     group.add_argument("-d", "--AED", type = float, default = 1, required = False,
             help = "Max AED  to allow, default is 1")
+    group.add_argument("-i", "--geneid", required = False,
+            help = "filter by given gene list")
     group.add_argument("gff", help = "input gff file")
     return group.parse_args()
 
@@ -57,7 +59,7 @@ def parse_anno(col):
     return anno_dict
 
 
-def parse_gff(gff, thrAED, thresh):
+def parse_gff(gff, thrAED, thresh, geneid = None):
     """
     parse the gff file 
     """
@@ -69,6 +71,8 @@ def parse_gff(gff, thrAED, thresh):
 
         line = line.strip()
         cols = line.split('\t')
+        if len(cols) != 9:
+            continue
         if cols[2] != "mRNA":
             continue
 
@@ -76,7 +80,10 @@ def parse_gff(gff, thrAED, thresh):
         AED = float(anno_dict['_AED'])
         QI  = anno_dict['_QI']
 
-        if is_high_confidence(AED, QI, thrAED, thresh):
+        if geneid is not None and anno_dict['Parent'] not in geneid:
+            continue
+
+        if is_high_confidence(AED, QI, thrAED, thresh): 
             good_mRNA.add(anno_dict['ID'])
             good_gene.add(anno_dict['Parent'])
         #print(good_gene)
@@ -93,6 +100,8 @@ def filter_gff(gff, good_gene, good_mRNA):
             continue
         line = line.strip()
         cols = line.split('\t')
+        if len(cols) != 9:
+            continue
 
         anno_dict = parse_anno(cols[8])
 
@@ -101,8 +110,13 @@ def filter_gff(gff, good_gene, good_mRNA):
                 print(line)
             else:
                 continue
-        else:
+        elif cols[2] == 'mRNA':
             if anno_dict['ID'] in good_mRNA:
+                print(line)
+            else:
+                continue
+        else:
+            if anno_dict['Parent'] in good_mRNA:
                 print(line)
             else:
                 continue
@@ -112,6 +126,11 @@ if __name__ == "__main__":
     gff = opts.gff
     thrAED = opts.AED
     thresh = [opts.ss, opts.exon, opts.exon2, opts.ss2, opts.exon3, opts.length]
+    if opts.geneid:
+        geneid = set( gene.strip() for gene in open(opts.geneid) )
+        good_gene,good_mRNA = parse_gff(gff, thrAED, thresh, geneid)
+    else:
+        good_gene,good_mRNA = parse_gff(gff, thrAED, thresh)
 
-    good_gene,good_mRNA = parse_gff(gff, thrAED, thresh)
     filter_gff(gff, good_gene, good_mRNA)
+

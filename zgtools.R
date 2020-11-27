@@ -55,7 +55,13 @@ read.STAR <- function(dir){
 }
 
 # Plot PCA without building a DESeq2 object
-plotPCA <- function(mt,  ntop = 500, group = NULL, blind = FALSE) {
+# Plot PCA without building a DESeq2 object
+plotPCA <- function(mt,  ntop = 500, group = NULL, blind = FALSE,
+                    label = TRUE) {
+  
+  if (is.data.frame(mt)){
+    mt <- as.matrix.data.frame(mt)
+  }
   
   vsd <- DESeq2::vst(mt, blind = blind)
   
@@ -65,24 +71,26 @@ plotPCA <- function(mt,  ntop = 500, group = NULL, blind = FALSE) {
   pca <- prcomp(t(vsd[select, ]))
   
   percentVar <- pca$sdev^2/sum(pca$sdev^2)
+  d <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2])
+  d$sample <- row.names(d)
   
   if (is.null(group)){
-    
-    d <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2])
     p <- ggplot(data = d, aes_string(x = "PC1", y = "PC2")) + 
-      geom_point(size = 3) + 
-      xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) + 
-      ylab(paste0("PC2: ", round(percentVar[2] *  100), "% variance")) + 
-      coord_fixed()
-    return(p)
+      geom_point(size = 3)  
+    
   } else{
-    d <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2], group = group)
-    p <- ggplot(data = d, aes_string(x = "PC1", y = "PC2", color= "group")) + 
-      geom_point(size = 3) + 
-      xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) + 
-      ylab(paste0("PC2: ", round(percentVar[2] *  100), "% variance")) + 
-      coord_fixed()
-    return(p)
+    d$group <- group
+    p <- ggplot(data = d, aes_string(x = "PC1", y = "PC2")) + 
+      geom_point(aes_string(color="group"), size = 3) 
+    
   }
-
+  if (label){
+    p <- p + ggrepel::geom_text_repel(aes_string(label="sample"))
+  }
+  p <- p +
+      xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) + 
+      ylab(paste0("PC2: ", round(percentVar[2] *  100), "% variance")) +
+      coord_fixed()
+  return(p)
 }
+
