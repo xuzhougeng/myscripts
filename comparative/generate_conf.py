@@ -114,6 +114,6 @@ if __name__ == "__main__":
 
     for chrom,lens in fa_dict.items():
         print("{chrom}\t{lens}\t{count}".format(\
-                chrom=chrom,lens=lens,count=gene_count[tx_chrom]), file=len_file)
+                chrom=chrom,lens=lens,count=gene_count[chrom]), file=len_file)
     len_file.close()
     gff_file.close()
