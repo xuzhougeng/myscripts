@@ -16,5 +16,6 @@ gatk CreateSequenceDictionary -R ref.fa
 - chr_len.txt : two columns, contig name and its length
 
 ```bash
-seqkit fx2tab -nl ref.fa | sort -k 2,2nr > chr_len.txt
+samtools faidx ref.fa
+cut -f 1,2 ref.fa.fai > chr_len.txt
 ```
