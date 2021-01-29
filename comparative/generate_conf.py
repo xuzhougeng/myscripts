@@ -4,9 +4,22 @@
 # GFF must have ID and Parent in column 9
 
 import re
-import sys
+import argparse
 from collections import defaultdict
 from collections import OrderedDict
+
+def get_parser():
+    """Get options"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('fasta',
+                        help="fasta file name")
+    parser.add_argument('gff',
+                        help="gff file name")
+    parser.add_argument('-p','--prefix', type=str, default="output",
+                        help="prefix for ouput ")
+
+    return parser
+
 
 
 # get the fasta  len
@@ -70,14 +83,15 @@ def parse_gff(gff):
     return [gene_dict, tx_pos_dict, CDS_dict]
 
 if __name__ == "__main__":
-    fa_dict = get_fasta_len(sys.argv[1])
-    gene_dict, tx_pos_dict, CDS_dict= parse_gff(sys.argv[2])
+    parser = get_parser()
+    args = parser.parse_args()
+    fa_dict = get_fasta_len( args.fasta)
+    gene_dict, tx_pos_dict, CDS_dict= parse_gff( args.gff )
     gene_count = {}
 
     # outfile
-    prefix = sys.argv[3]
-    len_file = open(prefix + ".len", "w")
-    gff_file = open(prefix + ".gff", "w")
+    len_file = open(args.prefix + ".len", "w")
+    gff_file = open(args.prefix + ".gff", "w")
 
     for gene, txs in gene_dict.items():
         tmp = 0
