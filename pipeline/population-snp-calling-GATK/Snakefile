@@ -47,7 +47,7 @@ def build_interval(chr_len_file, threads = 50, debug=False):
 
 
 # configuration
-configfile: "config.yaml"
+#configfile: "config.yaml"
 FASTA    = config['FASTA']
 INDEX    = config['INDEX']
 PLOIDY   = config['PLOIDY']
