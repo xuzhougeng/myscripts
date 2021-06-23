@@ -1,9 +1,6 @@
 
-FASTA: reference/Mpolymorpha_320_v3.0.fa
-INDEX: reference/Mpolymorpha
-GFF: reference/Mpolymorpha_320_v3.1.gene.gff3
-GENOMESIZE: 2.2e8
-
+FASTA: "path/to/genome.fasta"
+GFF: "path/to/reference.gff"
+GENOMESIZE: 
 ADAPTER: "CTGTCTCTTATACACATCT"
-
-SAMPLES: samples.txt
+SAMPLES: samples.csv

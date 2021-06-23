@@ -1,0 +1,5 @@
+id,sample,rep,fq1,fq2
+r1_1,s1,1,/path/to/s1.fastq.gz,/path/to/s2.fastq.gz
+r1_2,s2,2,/path/to/s2.fastq.gz,/path/to/s2.fastq.gz
+r2_1,s3,1,/path/to/s3.fastq.gz,/path/to/s3.fastq.gz
+r2_2,s4,2,/path/to/s4.fastq.gz,/path/to/s4.fastq.gz
