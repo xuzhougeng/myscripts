@@ -178,7 +178,8 @@ if isinstance(REMOVE_PLASTOME, str):
         threads: 20
         message: "----- filter duplcation, multi-mappers, low_quality reads with samtools -----"
         shell:"""
-            samtools view --write-index -@ {threads} -L {params.bed} -bF 1804 -q {params.quality} {input} -o {output} 
+            samtools view -@ {threads} -L {params.bed} -bF 1804 -q {params.quality} {input} -o {output} && \
+            samtools index -@ {threads} {output} 
         """
 elif isinstance(REMOVE_PLASTOME, int):
     # consider the contig small than 
@@ -203,7 +204,8 @@ elif isinstance(REMOVE_PLASTOME, int):
         threads: 20
         message: "----- filter duplcation, multi-mappers, low_quality reads with samtools -----"
         shell:"""
-            samtools view --write-index -@ {threads} -L {input[1]} -bF 1804 -q {params.quality} {input[0]} -o {output}
+            samtools view -@ {threads} -L {input[1]} -bF 1804 -q {params.quality} {input[0]} -o {output} && \
+            samtools index -@ {threads} {output} 
         """
 else:
     rule filtration:
@@ -216,7 +218,8 @@ else:
         threads: 20
         message: "----- filter duplcation, multi-mappers, low_quality reads with samtools -----"
         shell:"""
-            samtools view  --write-index -@ {threads} -bF 1804 -q {params.quality} {input} -o {output} 
+            samtools view -@ {threads} -bF 1804 -q {params.quality} {input} -o {output}  && \
+            samtools index -@ {threads} {output} 
         """
 
 
