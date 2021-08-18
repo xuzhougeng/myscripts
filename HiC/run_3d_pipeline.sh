@@ -34,4 +34,4 @@ wait
 	-D /opt/biosoft/juicer \
 	-t 100 &> juicer.log 
 
-#bash /opt/biosoft/3d-dna/run-asm-pipeline.sh -r 2 reference/genome.fa aligned/merged_nodups.txt &> 3d.log 
+bash /opt/biosoft/3d-dna/run-asm-pipeline.sh --editor-repeat-coverage 100 -r 0 reference/genome.fa aligned/merged_nodups.txt &> 3d.log 
