@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "htslib/sam.h"
 #include <stdbool.h>
-#include <string.h>
+
+#include "htslib/sam.h"
 #include "htslib/khash.h"
 
 #define ARRSIZE 1001
@@ -14,7 +14,7 @@ KHASH_SET_INIT_STR(str)
 
 bool is_bam(char *fname);
 int strcasecmp(const char *s1, const char *s2);
-char* get_fn_out(const char *fn);
+char* rename_suffix(const char *fn);
 
 int main(int argc, char *argv[]){
   //hts_verbose = 0; // suppressed htslib warnnings	
@@ -25,7 +25,7 @@ int main(int argc, char *argv[]){
   }
   char *frag_size_fname;
   if (argc == 2){
-    frag_size_fname = get_fn_out(argv[1]);
+    frag_size_fname = rename_suffix(argv[1]);
   } else{
     frag_size_fname = argv[2];
   }
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]){
 }
 
 //replace the .bam to .txt
-char* get_fn_out(const char *fn){
+char* rename_suffix(const char *fn){
   int l = strlen(fn);
   char *temp = malloc( (size_t)  l * sizeof(char) );
   strcpy(temp, fn);
@@ -111,9 +111,11 @@ bool is_bam(char *fname){
 
 //comparsion string ignoreing case
 int strcasecmp(const char *s1, const char *s2){
-  int ret ;
-  char temp[10];
-  strcpy(temp, s1);
+    int ret;
+    
+    int l = strlen(s1);
+    char *temp = malloc( (size_t) l * sizeof(char));
+    strcpy(temp, s1);
   
   int i;
   for(i = 0 ; temp[i]!= '\0'; ++i){
