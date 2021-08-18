@@ -6,9 +6,18 @@ from os.path import basename
 
 app = Flask(__name__)
 
+
+"""
+注意:
+    1. 修改ref_dict中的ref_name1和ref_name2fa的位置
+	2. 修改query_seq_db中的 ref1 和 ref2, 改成你的物种里的特有关键词, 例如A.thaliana 我用的是thaliana
+
+"""
+
+
 ref_dict = {
-    "Athaliana":  "/data/reference/blat/Athaliana.2bit",
-    "Alyrata": "/data/reference/blat/Alyrata_384_v1.2bit"
+    "ref_name1":  "/path/to/your/reference1.fa",
+    "ref_name2":  "/path/to/your/reference2.fa"
 }
 
 def query_seq_db(db):
@@ -20,12 +29,12 @@ def query_seq_db(db):
     #ref = ref_dict[dbname]
     #return ref
     db = db.lower()
-    if "thaliana" in db:
-        return ref_dict["Athaliana"]
-    elif "lyrata" in db:
-        return ref_dict["Alyrata"]
+    if "ref1" in db:
+        return ref_dict["ref_name1"]
+    elif "ref2" in db:
+        return ref_dict["ref_name2"]
     else:
-        return ref_dict["Athaliana"]
+        return ref_dict["ref_name1"]
    
     
 
