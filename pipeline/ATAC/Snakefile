@@ -222,6 +222,25 @@ else:
             samtools index -@ {threads} {output} 
         """
 
+# quality control
+rule bam_basic_stats:
+    input: rules.markdup.output
+    params:
+        len = str(REMOVE_PLASTOME)
+    output: 
+        join(QC_DIR, "{sample}_markdup_basic_stats.txt")
+    shell:"""
+        bam_basic_stats {input} {ouput} {params.len}
+    """
+
+rule bam_frag_size_stats:
+    input: rules.filtration.output
+    output:
+        join(QC_DIR, "{sample}_frag_size.txt")
+    shell:"""
+        bam_frag_stats {input} {output}
+    """
+
 
 # calling peak from bam
 rule call_peak:
