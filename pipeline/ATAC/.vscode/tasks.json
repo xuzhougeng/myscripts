@@ -1,0 +1,32 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: gcc 生成活动文件",
+			"command": "/usr/bin/gcc",
+			"args": [
+				"-g",
+				"${file}",
+				"-o",
+				"${fileDirname}/${fileBasenameNoExtension}",
+				"-I/opt/biosoft/htslib-1.9/include",
+				"-L/opt/biosoft/htslib-1.9/lib",
+				"-lhts",
+				"-Wl,-rpath=/opt/biosoft/htslib-1.9/lib"
+	
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "编译器: /usr/bin/gcc"
+		}
+	]
+}

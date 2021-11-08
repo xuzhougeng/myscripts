@@ -1,0 +1,37 @@
+import os
+from os.path import join
+
+configfile: "config.yaml"
+input = config['input']
+
+SCG_OUT = "SingleCopyGenes"
+MSA_OUT = "MultipleSequenceAlignment"
+
+shell("mkdir -p {SCG_OUT} {MSA_OUT}")
+
+SCG = [ x.strip() for x in open(input) ] 
+ALL_MSA = expand(join(MSA_OUT, "{OG}.done"), OG=SCG)
+
+rule all:
+    input: ALL_MSA
+
+rule MSA:
+    input: join(SCG_OUT, "{OG}.fa")
+    params:
+        prefix = lambda wildcards: wildcards.OG,
+        outdir = lambda wildcards: join(MSA_OUT, wildcards.OG)
+    output: join(MSA_OUT, "{OG}.done")
+    log: join(MSA_OUT, "{OG}.log")
+    message: "processing  {input} -> {output}"
+    threads: 4
+    resources:
+        mem_mb=4000
+    shell:"""
+    singularity run /opt/biosoft/MACSE/omm_macse_v10.02.sif \
+    --in_seq_file {input} \
+    --out_dir {params.outdir} \
+    --java_mem 4000m \
+    --out_file_prefix {params.prefix} &> {log} && \
+    touch {output} || rmdir {params.outdir}
+    """
+

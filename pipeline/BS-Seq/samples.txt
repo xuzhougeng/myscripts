@@ -1,0 +1,1 @@
+sample_name	/path/to/read_1.fq.gz	/path/to/read_2.fq.gz

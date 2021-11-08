@@ -14,6 +14,10 @@ df$start <- ifelse(df$start < 0, 0, df$start)
 df$end <- df$end + 2000
 write.table(df, file="C58_2k_gene.bed", sep="\t", quote=FALSE, col.names=FALSE, row.names = FALSE)
 
+df$start <- df$start - 3000
+df$start <- ifelse(df$start < 0, 0, df$start)
+df$end <- df$end + 3000
+write.table(df, file="C58_3k_gene.bed", sep="\t", quote=FALSE, col.names=FALSE, row.names = FALSE)
 
 
 #gene <- mygene::getGenes(geneID)

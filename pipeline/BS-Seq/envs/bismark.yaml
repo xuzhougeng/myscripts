@@ -1,0 +1,8 @@
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - tbb=2020.3=hfd86e86_0
+  - samtools=1.11=h6270b1f_0
+  - bismark=0.23
+

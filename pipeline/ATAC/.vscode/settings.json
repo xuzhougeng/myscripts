@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "*.nf": "groovy",
+        "kseq.h": "c",
+        "sam.h": "c",
+        "strings.h": "c",
+        "stdio.h": "c"
+    }
+}

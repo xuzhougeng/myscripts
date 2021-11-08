@@ -1,0 +1,206 @@
+from os.path import join
+import pandas as pd
+
+# requirement:
+# bismark >= 0.23
+# load the configure file in YAML
+configfile: "config.yaml"
+
+sampleTable = pd.read_csv(config['sample'], sep = "\t", index_col = 0, header=None)
+
+samples = sampleTable.index.to_list()
+
+pair_end = config['pair_end']
+if pair_end:
+    result_files = expand("03_methylation_extraction/{sample}_pe.deduplicated.bismark.cov.gz", sample = samples)
+else:
+    result_files = expand("03_methylation_extraction/{sample}.deduplicated.bismark.cov.gz", sample = samples)
+
+
+def get_files_from_sampleTable(wildcards):
+    sample = wildcards.sample
+    if pair_end:
+        return sampleTable.loc[ sample, [1,2] ].to_list()
+    else:
+        return sampleTable.loc[ sample, [1] ].to_list()
+
+
+rule all:
+    input: result_files
+
+# build bismark index
+rule build_index:
+    input: config['fasta']
+    output: "build_index.done"
+    params: 
+        indir = config['genome_folder'],
+        aligner = config['aligner']
+    threads: 8
+    conda: "envs/bismark.yaml"
+    log: join("log", "build.log")
+    shell:"""
+    bismark_genome_preparation --parallel {threads} --{params.aligner} {params.indir} {params.indir}  &> {log} \
+      && touch build_index.done
+    """
+
+# quality control
+if pair_end:
+    rule qc_pe:
+        input: get_files_from_sampleTable
+        output:
+            r1 = "01_clean_data/{sample}_R1.fastq.gz",
+            r2 = "01_clean_data/{sample}_R2.fastq.gz"
+        threads: 8
+        conda: "envs/qc.yaml"
+        shell: "fastp -w {threads} -i {input[0]} -I {input[1]} -o {output.r1} -O {output.r2}"
+else:
+    rule qc_se:
+        input: get_files_from_sampleTable
+        output: "01_clean_data/{sample}.fastq.gz"
+        threads: 8
+        conda: "envs/qc.yaml"
+        shell: "fastp -i {input} -o {output}"
+
+
+# bismark alignment
+if pair_end:
+    rule align_pe:
+        input:
+            r1 = "01_clean_data/{sample}_R1.fastq.gz",
+            r2 = "01_clean_data/{sample}_R2.fastq.gz",
+            index = "build_index.done"
+        output:
+            "02_bismark_align/{sample}_pe.bam"
+        params:
+            outdir = "02_bismark_align",
+            aligner = config['aligner'],
+            ref = config["genome_folder"],
+            basename = lambda wildcards : wildcards.sample
+        threads: 10
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_aln.log"  )
+        shell:"""
+        mkdir -p temp &&  bismark --{params.aligner}  \
+           --basename {params.basename} \
+           --parallel 1 -p {threads} -o {params.outdir} --temp_dir temp \
+           {params.ref} \
+          -1 {input.r1} -2 {input.r2} &> {log}
+        """
+else:
+    rule align_se:
+        input:
+            r1 = "01_clean_data/{sample}.fastq.gz",
+            index = "build_index.done"
+        output:
+            "02_bismark_align/{sample}.bam"
+        params:
+            outdir = "02_bismark_align",
+            aligner = config['aligner'],
+            ref = config["genome_folder"],
+            basename = lambda wildcards : wildcards.sample
+        threads: 10
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_aln.log" )
+        shell:"""
+        mkdir -p temp && bismark --{params.aligner} \
+           --basename {prams.basename } \
+            --parallel 1 -p {threads} -o {params.outdir} --temp_dir temp \
+            {params.ref} \
+            {input.r1} &> {log}
+        """
+
+# deduplication
+if pair_end:
+    rule deduplicate_pe:
+        input: "02_bismark_align/{sample}_pe.bam"
+        output: "02_bismark_align/{sample}_pe.deduplicated.bam"
+        params: "02_bismark_align"
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_dedup.log" )
+        shell: "deduplicate_bismark -p --bam --output_dir {params} {input} &> {log}"
+else:
+    rule dedpulicate_se:
+        input: "02_bismark_align/{sample}.bam"
+        output: "02_bismark_align/{sample}.deduplicated.bam"
+        params: "02_bismark_align"
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_dedup.log" )
+        shell:"deduplicate_bismark -s --bam --output_dir {params} {input} &> {log}"
+
+# bam sorting not required from methylation extract but for visulazation
+if pair_end:
+    rule sort_pe:
+        input: "02_bismark_align/{sample}_pe.deduplicated.bam"
+        output: "02_bismark_align/{sample}_sorted.bam"
+        threads: 8
+        conda: "envs/bismark.yaml"
+        shell:"samtools sort -@ {threads} -O bam ${id} -o ${input}/${base}_sorted.bam"
+else:
+    rule sort_se:
+        input: "02_bismark_align/{sample}.deduplicated.bam"
+        output: "02_bismark_align/{sample}_sorted.bam"
+        threads: 8
+        conda: "envs/bismark.yaml"
+        shell:"samtools sort -@ {threads} -O bam ${id} -o ${input}/${base}_sorted.bam"
+
+
+
+if pair_end:
+    rule methylation_extract_pe:
+        input: "02_bismark_align/{sample}_pe.deduplicated.bam"
+        output: "03_methylation_extraction/{sample}_pe.deduplicated.bismark.cov.gz"
+        params:
+            ref = config["genome_folder"],
+            outdir = "03_methylation_extraction",
+            ignore_r2 = config['ignore_r2']
+        resources:
+            mem_mb = 10000
+        threads: 10
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_extract.log"  )
+        shell:"""bismark_methylation_extractor \
+        --paired-end \
+        --ignore_r2 {params.ignore_r2} \
+        --no_overlap \
+        --CX --comprehensive \
+        --gzip --bedGraph \
+        --cytosine_report \
+        --multicore {threads} --buffer_size 10G \
+        --genome_folder {params.ref}\
+        -o {params.outdir} {input}  &> {log}     
+        """
+else:
+    rule methylation_extract_se:
+        input: "02_bismark_align/{sample}.deduplicated.bam"
+        output: "03_methylation_extraction/{sample}.deduplicated.bismark.cov.gz"
+        params:
+            ref = config["genome_folder"],
+            outdir = "03_methylation_extraction"
+        resources:
+            mem_mb = 10000
+        threads: 10
+        conda: "envs/bismark.yaml"
+        log: join("log", "{sample}_extract.log"  )
+        shell:"""bismark_methylation_extractor --single-end \
+        --CX \
+        --comprehensive --bedGraph --gzip --multicore {threads} --buffer_size 10G \
+        --genome_folder {params.ref} \
+        -o {params.outdir} \
+        {input} &> {log} 
+        """
+
+if
+
+
+else:
+
+	rule cystosine_report:
+		input:
+		output:
+
+		shell:"""coverage2cytosine \
+			--genome_folder ref \
+			--output $name \
+			--dir 04_cytosine_report \
+			--CX_context --gzip $id
+		"""

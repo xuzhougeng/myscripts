@@ -13,7 +13,12 @@
 ####   - matplotlib
 ####   - numpy
 ####   - sklearn
+####   - bwa
+####   - samtools
 ################################################################################################
+# install with conda
+# conda create -c bioconda  -c conda-forge -n tdna python=3 pysam matplotlib numpy blast minimap2 spades scikit-learn bwa samtools
+
 
 import sys
 import argparse

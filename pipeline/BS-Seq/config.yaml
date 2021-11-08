@@ -1,0 +1,11 @@
+fasta: "ref/Athaliana.fa"
+genome_folder: "ref"
+
+# input sample
+sample: "samples.txt"
+pair_end: True
+
+# align method
+aligner: "bowtie2"
+
+ignore_r2: "5"

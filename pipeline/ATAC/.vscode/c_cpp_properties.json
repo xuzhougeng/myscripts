@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/biosoft/htslib-1.9/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c99",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": [
+                "-I/opt/biosoft/htslib-1.9/include",
+                "-L/opt/biosoft/htslib-1.9/lib",
+                "-lhts"
+            ]
+        }
+    ],
+    "version": 4
+}
