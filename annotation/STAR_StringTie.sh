@@ -15,13 +15,14 @@ reference=$1
 sample=$2
 
 # building index for alignment
+ulimit -n 4096
 index=STAR
 mkdir -p ${index}
 
 if [ ! -f ${index}/SA ]
 then
     ${STAR} \
-    --runThreadN 50 \
+    --runThreadN 20 \
     --runMode genomeGenerate \
     --genomeDir $index \
     --genomeFastaFiles ${reference}
@@ -40,7 +41,7 @@ do
 		-j 01-clean-data/${prefix}.json -h 01-clean-data/${prefix}.html
     STAR \
     	--genomeDir $index \
-    	--runThreadN 100 \
+    	--runThreadN 20 \
     	--readFilesIn 01-clean-data/${prefix}_1.fq.gz 01-clean-data/${prefix}_2.fq.gz \
     	--readFilesCommand zcat \
     	--outFileNamePrefix 02-read-align/${prefix}_ \

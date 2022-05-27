@@ -12,6 +12,7 @@ FQ2=$3
 
 THREADS=30
 source /etc/profile.d/modules.sh
+ulimit -n 65535
 # read align
 module load bwa/0.7.17
 module load samtools/1.10

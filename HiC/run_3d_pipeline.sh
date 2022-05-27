@@ -9,9 +9,16 @@ if [ $# -lt 1 ]; then
 	exit 1
 fi
 
+# Requirement
+# - Bwa
+# - Seqkit
+# - python3
+# - Juicer
+# - GNU-Awk
+# - 3D-DNA
 
 FASTA=$1
-module load bwa/0.7.17
+#module load bwa/0.7.17
 
 if [ ! -f reference/genome.fa.bwt ]; then
     mkdir -p reference
