@@ -6,6 +6,12 @@ Date: 2018-2-06
 Version 0.1.1: Calling snp at all chromosomes simultaneously
 Version 0.1.2: Add fastp as quality control process
 Run: snakemake -s Snakefile
+
+requirement:
+- fastp
+- bwa
+- samtools
+- bcftools
 """
 
 # Globals-----------------------------------------------------------------------
@@ -93,7 +99,6 @@ rule bwa_mem:
     threads: 8
     message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
     shell:"""
-        module load bwa/0.7.17
         bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
             samblaster --addMateTags --splitterFile {output[1]} --discordantFile {output[2]} 2> {log.log2} |\
             sambamba view -S -f bam -l 0 /dev/stdin |\
@@ -175,7 +180,6 @@ rule snpeff:
        index = join(VCF_DIR, "_".join(SAMPLES) + '_ann' + '.vcf.gz.csi')
     message: "annotate with SnpEff"
     shell:"""
-        module load bcftools/1.9
         mkdir -p {params.outdir}
         java -Xmx4G -jar {snpeff} ann -o gatk -s {params.outdir}/snpeff_summary.html {params.db} {input} | \
         bcftools view  -Oz -o {output.vcf}
@@ -188,7 +192,7 @@ rule vcf_stats:
     output:
         join(VCF_DIR, "{sample}.stat.txt")
     shell:
-        "module load bcftools/1.9 && bcftools stats {input} > {output}"
+        "bcftools stats {input} > {output}"
 
 rule vcf2csv:
     input:
@@ -197,7 +201,6 @@ rule vcf2csv:
         join("report","all_gene.csv")
     message: "formatting the vcf with bcftools query"
     shell:"""
-    module load bcftools/1.9
     bcftools view -e 'GT~"\."' {input} | bcftools view -e 'GT="AA"' |\
     bcftools query -i 'FILTER="PASS"' -H -f "%CHROM,%POS[,%GT,%AD{{0}},%AD{{1}}],%EFF\n" > {output}
     sed -i '1s/# //' {output}

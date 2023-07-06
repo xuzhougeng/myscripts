@@ -15,6 +15,7 @@ reference=$1
 sample=$2
 GTF=$3
 
+ulimit -n 10240
 # building index for alignment
 index=STAR
 mkdir -p ${index}
@@ -41,12 +42,12 @@ do
 		-j 01-clean-data/${prefix}.json -h 01-clean-data/${prefix}.html
     STAR \
     	--genomeDir $index \
-    	--runThreadN 100 \
+    	--runThreadN 50 \
     	--readFilesIn 01-clean-data/${prefix}_1.fq.gz 01-clean-data/${prefix}_2.fq.gz \
     	--readFilesCommand zcat \
     	--outFileNamePrefix 02-read-align/${prefix}_ \
     	--outSAMtype BAM SortedByCoordinate \
-    	--outBAMsortingThreadN 40 \
+    	--outBAMsortingThreadN 20 \
         --quantMode GeneCounts --sjdbGTFfile $GTF
 
 done

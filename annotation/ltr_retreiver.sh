@@ -43,4 +43,5 @@ echo "LTR of LTR_harvest: $num2"
 	-genome $REF  \
 	-inharvest ltr.harvest.scn \
 	-infinder ltr.finder.scn \
+	-trf_path /opt/biosoft/TRF/trf \
 	-threads $THREADS -u $RATE

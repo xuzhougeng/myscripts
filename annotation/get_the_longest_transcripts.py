@@ -63,3 +63,6 @@ for gene, txs in gene_dict.items():
     tx_end   = tx_pos_dict[lst_tx][2]
     tx_strand = tx_pos_dict[lst_tx][3]
     print("{gene}\t{tx}\t{chrom}\t{start}\t{end}\t{strand}".format(gene=gene,tx=lst_tx,chrom=tx_chrom,start=tx_start,end=tx_end, strand=tx_strand))
+
+
+    1

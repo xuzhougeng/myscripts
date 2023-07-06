@@ -64,9 +64,14 @@ def parse_gff(gff):
             # match the pattern ID=xxxxx; or ID=xxxxx
 
             tx_id = re.search(r'ID=(.*?)[;\n]',content[8]).group(1)
-            tx_parent = re.search(r'Parent=(.*?)[;\n]',content[8]).group(1)
+            tx_parent = re.search(r'Parent=(.*?)[;\n]',content[8])
+            if tx_parent is None:
+                tx_parent = tx_id
+            else:
+                tx_parent = tx_parent.group(1)
+    
             tx_parent = tx_parent.strip() # remove the 'r' and '\n'
-
+            
             # if the parent of transcript is not in the gene_dict, create it rather than append
             if tx_parent in gene_dict:
                 gene_dict[tx_parent].append(tx_id)

@@ -1,0 +1,153 @@
+# multiple sample alignment and variant calling script shell.prefix("set -eo pipefail; echo BEGIN at $(date);")
+shell.suffix("; exitstat=$?; echo END at $(date); echo exit status was $exitstat; exit $exitstat")
+
+# import python package
+from os.path import join, abspath, basename
+
+# configuration
+configfile: "config.yaml"
+FASTA = config["FASTA"]
+READ1 = abspath(config["READ1"]) # Read1 file path
+READ2 = abspath(config["READ2"])
+
+MQ = config["MQ"]
+
+CLEAN_DIR   = join("analysis", "01-clean-data")
+ALIGN_DIR   = join("analysis", "02-read-alignment")
+ALLHIC_DIR  = join("analysis", "03-allhic-analysis")
+LOG_DIR     = join("analysis", "log")
+
+shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {ALLHIC_DIR} {LOG_DIR}")
+
+#ALL_READ1 = expand(join(CLEAN_DIR, "{part}." + R1NM), part=[ str(i).zfill(4) for i in range(1, SIZE + 1)])
+#ALL_READ2 = expand(join(CLEAN_DIR, "{part}." + R2NM), part=[ str(i).zfill(4) for i in range(1, SIZE + 1)])
+        
+
+"""
+echo "### Step 0: Index reference" # Run only once! Skip this step if you have already generated BWA index files
+$BWA index -a bwtsw -p $PREFIX $REF
+
+echo "### Step 1.A: FASTQ to BAM (1st)"
+$BWA mem -t $CPU $REF $IN_DIR/$SRA\_R1.fastq.gz | $SAMTOOLS view -@ $CPU -Sb - > $RAW_DIR/$SRA\_1.bam
+
+echo "### Step 1.B: FASTQ to BAM (2nd)"
+$BWA mem -t $CPU $REF $IN_DIR/$SRA\_R2.fastq.gz | $SAMTOOLS view -@ $CPU -Sb - > $RAW_DIR/$SRA\_2.bam
+
+echo "### Step 2.A: Filter 5' end (1st)"
+$SAMTOOLS view -h $RAW_DIR/$SRA\_1.bam | perl $FILTER | $SAMTOOLS view -Sb - > $FILT_DIR/$SRA\_1.bam
+
+echo "### Step 2.B: Filter 5' end (2nd)"
+$SAMTOOLS view -h $RAW_DIR/$SRA\_2.bam | perl $FILTER | $SAMTOOLS view -Sb - > $FILT_DIR/$SRA\_2.bam
+
+echo "### Step 3A: Pair reads & mapping quality filter"
+perl $COMBINER $FILT_DIR/$SRA\_1.bam $FILT_DIR/$SRA\_2.bam $SAMTOOLS $MAPQ_FILTER | $SAMTOOLS view -bS -t $FAIDX - | $SAMTOOLS sort -@ $CPU -o $TMP_DIR/$SRA.bam -
+
+echo "### Step 3.B: Add read group"
+java -Xmx4G -Djava.io.tmpdir=temp/ -jar $PICARD AddOrReplaceReadGroups INPUT=$TMP_DIR/$SRA.bam OUTPUT=$PAIR_DIR/$SRA.bam ID=$SRA LB=$SRA SM=$LABEL PL=ILLUMINA PU=none
+
+"""
+
+
+rule all:
+    #input: join(ALLHIC_DIR,"bwa_aln.bam")
+    input: join(ALLHIC_DIR,"clean.bam")
+
+rule build_fa_index:
+    input:  FASTA
+    output: FASTA + ".fai"
+    shell:"""
+    samtools faidx {input}
+    """
+
+rule build_bwa_index:
+    input: FASTA
+    output: FASTA + ".bwt"
+    log: join(LOG_DIR, "bwa_index.log")
+    shell:"""
+    bwa index -a bwtsw {input} 2> {log}
+    """
+
+rule fastp:
+    input:
+        r1 = READ1,
+        r2 = READ2
+    params:
+        size = SIZE,
+        r1 = join(CLEAN_DIR, R1NM),
+        r2 = join(CLEAN_DIR, R2NM)
+    output: ALL_READ1, ALL_READ2
+    threads: 8
+    shell:"""
+    fastp -w {threads} -s {params.size} -i {input.r1} -I {input.r2} \
+        -o {params.r1} -O {params.r2}
+    """
+
+rule bwa_mem_r1_reads:
+    input:
+        ref = FASTA,
+        bwa = rules.build_bwa_index.output,
+        fa = rules.build_fa_index.output,
+        r1 = join(CLEAN_DIR, "{part}." + R1NM),
+    output:
+        join(ALIGN_DIR, "{}")
+    log: join(LOG_DIR, "{part}.r1.bwa_aln.log")
+    threads: 20
+    shell:"""
+       bwa mem -t {threads} {input.ref} {input.r1}  | samtools view -Sb - > {output} 2> {log}
+    """
+
+rule bwa_mem_r2_reads:
+    input:
+        ref = FASTA,
+        bwa = rules.build_bwa_index.output,
+        fa = rules.build_fa_index.output,
+        r1 = join(CLEAN_DIR, "{part}." + R1NM),
+    output:
+        join(ALIGN_DIR, "{}")
+    log: join(LOG_DIR, "{part}.r1.bwa_aln.log")
+    threads: 20
+    shell:"""
+       bwa mem -t {threads} {input.ref} {input.r1}  | samtools view -Sb - > {output} 2> {log}
+    """
+
+
+rule bwa_sampe:
+    input:
+        ref = FASTA,
+        s1 = join(ALIGN_DIR, "{part}.r1.sai"),
+        s2 = join(ALIGN_DIR, "{part}.r2.sai"),
+        r1 = join(CLEAN_DIR, "{part}." + R1NM),
+        r2 = join(CLEAN_DIR, "{part}." + R2NM)
+    output:
+        join(ALIGN_DIR, "{part}.bwa_aln.bam")
+    log: join(LOG_DIR, "{part}.bwa_sampe.log")
+    shell:"""
+        bwa sampe {input.ref} {input.s1} {input.s2} {input.r1} {input.r2} 2> {log} | samtools sort -@ 10 > {output}
+    """
+
+rule merge:
+    input:
+        expand(join(ALIGN_DIR, "{part}.bwa_aln.bam"),
+           part=[str(i).zfill(4) for i in range(1,SIZE+1)] )
+    output:
+       join(ALLHIC_DIR, "bwa_aln.bam")
+    shell:"""
+        samtools merge {output} {input}
+    """
+
+rule preprocess:
+    input:
+        bam = rules.merge.output,
+        ref = FASTA
+    params:
+        RE = "MBOI", 
+        DIR = ALLHIC_DIR
+    output:
+        join(ALLHIC_DIR, "clean.bam")
+    shell:"""
+        PreprocessSAMs.pl {input.bam} {input.ref} {params.RE} && \
+        filterBAM_forHiC.pl {params.DIR}/bwa_aln.REduced.paired_only.bam {params.DIR}/clean.sam && \
+        samtools view -bt {input.ref}.fai {params.DIR}/clean.sam > {params.DIR}/clean.bam && \
+        rm -f {params.DIR}/clean.sam       
+    """
+
