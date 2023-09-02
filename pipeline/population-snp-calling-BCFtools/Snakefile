@@ -1,6 +1,3 @@
-# multiple sample alignment and variant calling script shell.prefix("set -eo pipefail; echo BEGIN at $(date);")
-shell.suffix("; exitstat=$?; echo END at $(date); echo exit status was $exitstat; exit $exitstat")
-
 # import python package
 from os.path import join
 
@@ -78,7 +75,12 @@ LOGDIR    = join("analysis", "log")
 shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {VCF_DIR} {FNL_DIR}")
 shell("mkdir -p {QC_DIR} {TMPDIR} {LOGDIR}")
 
-ALL_BAM  = [join(ALIGN_DIR, "{}_markdup_sorted.bam".format(sample)) for sample in SAMPLES]
+if DEDUPLICATE:
+    ALL_BAM  = [join(ALIGN_DIR, "{}_markdup_sorted.bam".format(sample)) for sample in SAMPLES]
+else:
+    ALL_BAM  = [join(ALIGN_DIR, "{}_sorted.bam".format(sample)) for sample in SAMPLES]
+
+
 ALL_VCF  = [join(VCF_DIR, "{}.bcf".format(chr)) for chr in list(interval_name_dict.keys()) ]
 FINAL_VCF = join(FNL_DIR, "merged.bcf")
 #VCFS     = join(VCF_DIR, "freebayes.var.vcf") # FreeBayes
@@ -95,6 +97,7 @@ rule data_clean:
         r2 = join(RAW_DIR, "{sample}_2.fq.gz")
     params:
         adapter = ADAPTER,
+        adapter_param = lambda wildcards, resources: '-a ' + ADAPTER if ADAPTER else '',
         length  = 50,
         quality = 20,
         prefix  = lambda wildcards: join(QC_DIR, wildcards.sample)
@@ -103,15 +106,16 @@ rule data_clean:
         r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
     log: join(LOGDIR, "{sample}_fastp.log")
     threads: 4
+    conda: "env.yaml"
     message: "----- processing {input.r1} and {input.r2} with fastp ------"
     shell: """
-        fastp $(if [ -n "{params.adapter}" ]; then echo '-a {params.adapter}'; fi;) \
+        fastp {params.adapter_param} \
         -w {threads} -j {params.prefix}.json -h {params.prefix}.html -l {params.length} -q {params.quality}\
         -i {input.r1} -I {input.r2} -o {output.r1} -O {output.r2}
     """
 
-# map to genome
-rule bwa_mem:
+
+rule bwa_mem_deduplicate:
     input:
         r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
         r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
@@ -127,26 +131,40 @@ rule bwa_mem:
     log:
         log1=join(LOGDIR, "{sample}_align_warning.log"),
         log2=join(LOGDIR, "{sample}_samblaster.log")
+    conda: "env.yaml"
     threads: 20
     message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
-    run:
-        if DEDUPLICATE:
-            shell("""
-            module load bwa/0.7.17
-            bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
-            samblaster --acceptDupMarks --addMateTags --splitterFile {params.split} --discordantFile {params.disc} 2> {log.log2} |\
-            sambamba view -S -f bam -l 0 /dev/stdin |\
-            sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output[0]} /dev/stdin
-            """)
-        else:
-            shell("""
-            module load bwa/0.7.17
-            bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
-            sambamba view -S -f bam -l 0 /dev/stdin |\
-            sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output[0]} /dev/stdin
-            """)
+    shell:
+        """
+        bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
+        samblaster --acceptDupMarks --addMateTags --splitterFile {params.split} --discordantFile {params.disc} 2> {log.log2} |\
+        sambamba view -S -f bam -l 0 /dev/stdin |\
+        sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output} /dev/stdin
+        """
 
-# Split Reference For GATK to
+rule bwa_mem_no_deduplicate:
+    input:
+        r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
+        r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
+    params:
+        index  = INDEX,
+        rg     = r"@RG\tID:{sample}\tSM:{sample}\tPL:ILLUMINA",
+        tmpdir = TMPDIR,
+        logdir = LOGDIR
+    output:
+        join(ALIGN_DIR,"{sample}_sorted.bam"),
+    log:
+        join(LOGDIR, "{sample}_align_warning.log")
+    conda: "env.yaml"
+    threads: 20
+    message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
+    shell:
+        """
+        bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log} |\
+        sambamba view -S -f bam -l 0 /dev/stdin |\
+        sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output} /dev/stdin
+        """
+
 rule singleVCF:
     input:
         ALL_BAM
@@ -156,8 +174,8 @@ rule singleVCF:
     output:
        join(VCF_DIR, "{chr}.bcf")
     threads: 6 
+    conda: "env.yaml"
     shell:"""
-    module load bcftools/1.9
 	bcftools mpileup -f {params.ref} \
         --redo-BAQ --min-BQ 30 \
         --per-sample-mF \
@@ -174,10 +192,5 @@ rule MergeVCFS:
         FINAL_VCF
     threads: 1
     shell:"""
-	module load bcftools/1.9 
 	bcftools concat --naive -o {output} {input}
-	#module load GATK/4.1.2.0
-    #gatk MergeVcfs  \
-	#   $(for val in {input}; do echo "-I $val"; done) \
-	#      -O {output}
     """

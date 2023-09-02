@@ -13,7 +13,7 @@ Step1: copy this pipeline to the work directory
 ```bash
 cd /path/to/work
 # copy
-cp -r ~/myscripts/pipeline/population-snp-calling-BCFtools/{Snakefile,config.yaml} .
+cp -r ~/myscripts/pipeline/population-snp-calling-BCFtools/{Snakefile,config.yaml,env.yaml} .
 ```
 
 Step2: prepare the reference and its index
@@ -69,5 +69,6 @@ snakemake -np
 # run
 # -j cores for parallel
 snakemake -j 20
-```
-
+# run with conda
+snakemake -j 20 --use-conda
+```  
