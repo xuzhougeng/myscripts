@@ -3,7 +3,7 @@ FASTA:
 INDEX: 
 
 #True or False
-DEDUPLICATE: False
+DEDUPLICATE: True
 
 CHRFILE: chr_len.txt
 VCFJOBS: 50
@@ -11,3 +11,8 @@ VCFJOBS: 50
 samples: samples.tsv
 depth: 20
 PLOIDY: 2
+
+# annotation
+Annotation: False
+snpEff: /opt/biosoft/snpEff/snpEff.jar
+SnpEffDB: Arabidopsis_thaliana

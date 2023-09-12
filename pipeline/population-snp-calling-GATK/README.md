@@ -17,5 +17,6 @@ gatk CreateSequenceDictionary -R ref.fa
 
 ```bash
 samtools faidx ref.fa
+samtools dict ref.fa > ref.dict
 cut -f 1,2 ref.fa.fai > chr_len.txt
 ```

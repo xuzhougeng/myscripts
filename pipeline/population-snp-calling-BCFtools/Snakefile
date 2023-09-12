@@ -50,6 +50,9 @@ INDEX    = config['INDEX']
 PLOIDY   = config['PLOIDY']
 CHRFILE  = config['CHRFILE']
 VCFJOBS  = config['VCFJOBS']
+snpEff   = config["snpEff"]
+SnpEffDB =  config["SnpEffDB"]
+
 SAMPLES  = [line.strip() for line in open(config['samples'])] # samples
 ADAPTER  = ""
 
@@ -81,15 +84,20 @@ else:
     ALL_BAM  = [join(ALIGN_DIR, "{}_sorted.bam".format(sample)) for sample in SAMPLES]
 
 
-ALL_VCF  = [join(VCF_DIR, "{}.bcf".format(chr)) for chr in list(interval_name_dict.keys()) ]
-FINAL_VCF = join(FNL_DIR, "merged.bcf")
+ALL_BCF  = [join(VCF_DIR, "{}.bcf".format(chr)) for chr in list(interval_name_dict.keys()) ]
+MERGED_BCF = join(FNL_DIR, "merged.bcf")
 #VCFS     = join(VCF_DIR, "freebayes.var.vcf") # FreeBayes
+
+if config['Annotation']:
+    FINAL_VCF = join(FNL_DIR, "anno.vcf.gz")
+else:
+    FINAL_VCF = MERGED_BCF
+
 
 
 rule all:
     input:
         FINAL_VCF
-        #ALL_BAM, VCFS
 
 rule data_clean:
     input:
@@ -187,10 +195,37 @@ rule singleVCF:
 
 rule MergeVCFS:
     input:
-        ALL_VCF
+        ALL_BCF
     output:
-        FINAL_VCF
+        MERGED_BCF
     threads: 1
     shell:"""
 	bcftools concat --naive -o {output} {input}
     """
+
+rule BCFtoVCF:
+   input:
+       MERGED_BCF
+    output:
+        join(FNL_DIR, "merged.vcf")
+    conda: "env.yaml"
+    shell:"""
+        bcftools view {input} > {output}
+    """
+
+rule snpeff:
+    input:
+        join(FNL_DIR, "merged.vcf")
+    params:
+        db = SnpEffDB,
+        outdir = "report/snpeff"
+    output:
+       vcf   = join(FNL_DIR, "anno.vcf.gz")
+       index   = join(FNL_DIR, "anno.vcf.gz.csi")
+    message: "annotate with SnpEff"
+    shell:"""
+        mkdir -p {params.outdir}
+        java -Xmx4G -jar {snpeff} ann -o gatk -s {params.outdir}/snpeff_summary.html {params.db} {input} | \
+        bcftools view  -Oz -o {output.vcf}
+        bcftools index {output.vcf}
+        """

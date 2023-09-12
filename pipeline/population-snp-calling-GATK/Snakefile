@@ -1,6 +1,3 @@
-# multiple sample alignment and variant calling script shell.prefix("set -eo pipefail; echo BEGIN at $(date);")
-shell.suffix("; exitstat=$?; echo END at $(date); echo exit status was $exitstat; exit $exitstat")
-
 # import python package
 from os.path import join
 
@@ -47,12 +44,16 @@ def build_interval(chr_len_file, threads = 50, debug=False):
 
 
 # configuration
-#configfile: "config.yaml"
+configfile: "config.yaml"
 FASTA    = config['FASTA']
 INDEX    = config['INDEX']
 PLOIDY   = config['PLOIDY']
 CHRFILE  = config['CHRFILE']
 VCFJOBS  = config['VCFJOBS']
+
+snpEff   = config["snpEff"]
+SnpEffDB =  config["SnpEffDB"]
+
 SAMPLES  = [line.strip() for line in open(config['samples'])] # samples
 ADAPTER  = ""
 
@@ -60,10 +61,10 @@ ADAPTER  = ""
 interval_name_dict = build_interval(CHRFILE, VCFJOBS)
 # How to deal with duplication
 DEDUPLICATE = config['DEDUPLICATE']
-readfilter = "--disable-read-filter NotDuplicateReadFilter"
+readfilter = ""
 
 if DEDUPLICATE:
-    readfilter = "--read-filter NotDuplicateReadFilter"
+    readfilter = "--read_filter DuplicateRead"
 
 # make workding directory
 RAW_DIR   = join("analysis", "00-raw-data")
@@ -79,7 +80,13 @@ LOGDIR    = join("analysis", "log")
 shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {GVCF_DIR} {GENOMEDB} {VCF_DIR}")
 shell("mkdir -p {QC_DIR} {TMPDIR} {LOGDIR}")
 
-ALL_BAM  = [join(ALIGN_DIR, "{}_markdup_sorted.bam".format(sample)) for sample in SAMPLES]
+
+if DEDUPLICATE:
+    ALL_BAM  = [join(ALIGN_DIR, "{}_markdup_sorted.bam".format(sample)) for sample in SAMPLES]
+else:
+    ALL_BAM  = [join(ALIGN_DIR, "{}_sorted.bam".format(sample)) for sample in SAMPLES]
+
+
 ALL_DB   = [join(GENOMEDB, "{}".format(chr)) for chr in list(interval_name_dict.keys()) ]
 ALL_VCF  = [join(VCF_DIR, "{}.vcf.gz".format(chr)) for chr in list(interval_name_dict.keys()) ]
 FINAL_VCF = join(VCF_DIR, "merged.vcf.gz")
@@ -104,6 +111,7 @@ rule data_clean:
         r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
         r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
     log: join(LOGDIR, "{sample}_fastp.log")
+    conda: "env.yaml"
     threads: 4
     message: "----- processing {input.r1} and {input.r2} with fastp ------"
     shell: """
@@ -113,7 +121,7 @@ rule data_clean:
     """
 
 # map to genome
-rule bwa_mem:
+rule bwa_mem_deduplicate:
     input:
         r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
         r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
@@ -129,24 +137,40 @@ rule bwa_mem:
     log:
         log1=join(LOGDIR, "{sample}_align_warning.log"),
         log2=join(LOGDIR, "{sample}_samblaster.log")
+    conda: "env.yaml"
     threads: 20
     message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
-    run:
-        if DEDUPLICATE:
-            shell("""
-            module load bwa/0.7.17
-            bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
-            samblaster --acceptDupMarks --addMateTags --splitterFile {params.split} --discordantFile {params.disc} 2> {log.log2} |\
-            sambamba view -S -f bam -l 0 /dev/stdin |\
-            sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output[0]} /dev/stdin
-            """)
-        else:
-            shell("""
-            module load bwa/0.7.17
-            bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
-            sambamba view -S -f bam -l 0 /dev/stdin |\
-            sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output[0]} /dev/stdin
-            """)
+    shell:
+        """
+        bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log.log1} |\
+        samblaster --acceptDupMarks --addMateTags --splitterFile {params.split} --discordantFile {params.disc} 2> {log.log2} |\
+        sambamba view -S -f bam -l 0 /dev/stdin |\
+        sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output} /dev/stdin
+        """
+
+rule bwa_mem_no_deduplicate:
+    input:
+        r1 = join(CLEAN_DIR, "{sample}_1.fq.gz"),
+        r2 = join(CLEAN_DIR, "{sample}_2.fq.gz")
+    params:
+        index  = INDEX,
+        rg     = r"@RG\tID:{sample}\tSM:{sample}\tPL:ILLUMINA",
+        tmpdir = TMPDIR,
+        logdir = LOGDIR
+    output:
+        join(ALIGN_DIR,"{sample}_sorted.bam"),
+    log:
+        join(LOGDIR, "{sample}_align_warning.log")
+    conda: "env.yaml"
+    threads: 20
+    message: "align {input.r1} and {input.r2} to {params.index} with {threads} threads"
+    shell:
+        """
+        bwa mem -v 2 -t {threads} -R '{params.rg}' {params.index} {input.r1} {input.r2} 2> {log} |\
+        sambamba view -S -f bam -l 0 /dev/stdin |\
+        sambamba sort -t {threads} -m 2G --tmpdir {params.tmpdir} -o {output} /dev/stdin
+        """
+
 
 # Split Reference For GATK to
 rule singleGVCF:
@@ -155,49 +179,50 @@ rule singleGVCF:
     params:
         ref       = FASTA,
         gatkfilter= readfilter,
-        interval = lambda wildcards: interval_name_dict[int(wildcards.chr)]
+        interval = lambda wildcards: interval_name_dict[int(wildcards.chr)],
+        interval_str = lambda wildcards: ' '.join('-L ' + val for val in interval_name_dict[int(wildcards.chr)])
     output:
        join(GVCF_DIR, "{sample}.{chr}.g.vcf.gz")
-    threads: 6 
+    threads: 6
+    conda: "env.yaml"
     shell:"""
-    module load GATK/4.1.2.0
-	gatk HaplotypeCaller -R {params.ref} \
-	    --genotyping-mode DISCOVERY \
-		--input {input} \
-	    $(for val in {params.interval}; do echo "--intervals $val"; done) \
-		-stand-call-conf 30 --sample-ploidy 2 -ERC GVCF \
+	gatk3 -T HaplotypeCaller -R {params.ref} \
+	    -I {input} \
+	    {params.interval_str} \
+		-stand_call_conf 30 --sample_ploidy 2 -ERC GVCF \
 		{params.gatkfilter} \
-		--output {output}
+		-o {output}
 	"""
 
-rule buildGenomicsDB:
+rule CombineGVCFs:
     input:
         expand(join(GVCF_DIR, "{sample}.{chr}.g.vcf.gz"), sample = SAMPLES, chr = "{chr}")
     params:
-         interval = lambda wildcards: interval_name_dict[int(wildcards.chr)]
+        interval_str = lambda wildcards: ' '.join('-V ' + val for val in interval_name_dict[int(wildcards.chr)])
     output:
-        directory(join(GENOMEDB, "{chr}" ))
-    threads: 4 
+        join(GVCF_DIR, "combined.{chr}.g.vcf")
+    threads: 4
+    conda: "env.yaml"
     shell:"""
-	module load GATK/4.1.2.0
-	gatk GenomicsDBImport --genomicsdb-workspace-path {output} \
-	   $(for val in {input}; do echo "--variant $val"; done) \
-	   $(for val2 in {params.interval}; do echo "--intervals $val2"; done)
-	"""
+    gatk3 -T CombineGVCFs -R {params.ref} \
+        {params.interval_str} \
+        -o {output}
+    """
 
 rule SingleGenotype:
     input:
-        directory(join(GENOMEDB, "{chr}" ))
+        join(GVCF_DIR, "combined.{chr}.g.vcf")
     params:
         ref       = FASTA,
     output:
         join(VCF_DIR, "{chr}.vcf.gz")
-    threads: 6 
+    threads: 6
+    conda: "env.yaml"
     shell:"""
-	module load GATK/4.1.2.0
-	gatk GenotypeGVCFs -R {params.ref} -V gendb://{input} -O {output}
+	gatk3 -T GenotypeGVCFs -R {params.ref} \
+        -V {input} \
+        -o {output}
     """
-
 
 rule MergeVCFS:
     input:
@@ -205,8 +230,8 @@ rule MergeVCFS:
     output:
         FINAL_VCF
     threads: 10
+    conda: "env.yaml"
     shell:"""
-	module load bcftools/1.9 
 	bcftools concat --threads {threads} {ALL_VCF} -Oz -o {FINAL_VCF}
 	#module load GATK/4.1.2.0
     #gatk MergeVcfs  \
@@ -214,21 +239,3 @@ rule MergeVCFS:
 	#      -O {output}
     """
 
-# Using FreeBayes to calling variants
-rule freebayes:
-    input: ALL_BAM
-    params:
-        ref    = FASTA,
-        ploidy = PLOIDY,
-        cov    = 10 
-    output: join(VCF_DIR, "freebayes.var.vcf")
-    threads: 100
-    shell:"""
-        module load freebayes
-        freebayes-parallel <(fasta_generate_regions.py {params.ref}.fai 100000) {threads} \
-            -p {params.ploidy} \
-            --standard-filters \
-            --min-coverage {params.cov} \
-            -f {params.ref} {input} > {output}
-    """
-# filter the results
