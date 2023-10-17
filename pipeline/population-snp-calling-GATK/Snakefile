@@ -71,13 +71,12 @@ RAW_DIR   = join("analysis", "00-raw-data")
 CLEAN_DIR = join("analysis", "01-clean-data")
 ALIGN_DIR = join("analysis", "02-read-alignment")
 GVCF_DIR  = join("analysis", "03-gvcf-calling")
-GENOMEDB  = join("analysis", "04-genomeDB")
-VCF_DIR   = join("analysis", "05-variant-calling")
+VCF_DIR   = join("analysis", "04-variant-calling")
 QC_DIR    = join("report", "fastp")
 TMPDIR    = join("analysis", "temp")
 LOGDIR    = join("analysis", "log")
 
-shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {GVCF_DIR} {GENOMEDB} {VCF_DIR}")
+shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {GVCF_DIR} {VCF_DIR}")
 shell("mkdir -p {QC_DIR} {TMPDIR} {LOGDIR}")
 
 
@@ -87,7 +86,6 @@ else:
     ALL_BAM  = [join(ALIGN_DIR, "{}_sorted.bam".format(sample)) for sample in SAMPLES]
 
 
-ALL_DB   = [join(GENOMEDB, "{}".format(chr)) for chr in list(interval_name_dict.keys()) ]
 ALL_VCF  = [join(VCF_DIR, "{}.vcf.gz".format(chr)) for chr in list(interval_name_dict.keys()) ]
 FINAL_VCF = join(VCF_DIR, "merged.vcf.gz")
 #VCFS     = join(VCF_DIR, "freebayes.var.vcf") # FreeBayes
@@ -198,15 +196,14 @@ rule CombineGVCFs:
     input:
         expand(join(GVCF_DIR, "{sample}.{chr}.g.vcf.gz"), sample = SAMPLES, chr = "{chr}")
     params:
-        interval_str = lambda wildcards: ' '.join('-V ' + val for val in interval_name_dict[int(wildcards.chr)])
+        ref       = FASTA,
+        vcf = lambda wildcards, input: " ".join(f'-V {vcf}' for vcf in input)
     output:
         join(GVCF_DIR, "combined.{chr}.g.vcf")
     threads: 4
     conda: "env.yaml"
     shell:"""
-    gatk3 -T CombineGVCFs -R {params.ref} \
-        {params.interval_str} \
-        -o {output}
+    gatk3 -T CombineGVCFs -R {params.ref}  {params.vcf} -o {output}
     """
 
 rule SingleGenotype:
@@ -227,15 +224,15 @@ rule SingleGenotype:
 rule MergeVCFS:
     input:
         ALL_VCF
+    params:
+        ref       = FASTA,
+        vcf = lambda wildcards, input: " ".join(f'-V {vcf}' for vcf in input)
     output:
         FINAL_VCF
     threads: 10
     conda: "env.yaml"
     shell:"""
-	bcftools concat --threads {threads} {ALL_VCF} -Oz -o {FINAL_VCF}
-	#module load GATK/4.1.2.0
-    #gatk MergeVcfs  \
-	#   $(for val in {input}; do echo "-I $val"; done) \
-	#      -O {output}
+	bcftools concat --threads {threads} {ALL_VCF} -Oz -o {FINAL_VCF} &&
+    bcftools index -t {FINAL_VCF}
     """
 
