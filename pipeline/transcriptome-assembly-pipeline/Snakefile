@@ -1,0 +1,256 @@
+import csv
+
+#mamba create -n rna_asm -c bioconda falco fastqc spades -y
+
+# 读取样本信息
+with open("samples.csv", "r") as tsv_file:
+    reader = csv.reader(tsv_file, delimiter=",")
+    sample_data = list(reader)
+
+samples_dict = {}
+for row in sample_data:
+    # 获取绝对路径
+    r1 = os.path.abspath(row[1])
+    r2 = os.path.abspath(row[2])
+    samples_dict[row[0]] = [r1, r2]
+
+all_samples= list(samples_dict.keys())
+
+# crate directories
+directories = ['raw_data', 'fastp', 'fastqc', 'merged', 'spades']
+for directory in directories:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+rule all:
+    input:
+        expand('fastqc/{sample}_R1/fastqc_report.html', sample=all_samples),
+        expand('fastqc/{sample}_R2/fastqc_report.html', sample=all_samples),
+        'merged/input_r1.fastq',
+        'merged/input_r2.fastq',
+
+
+
+rule symlink_raw_data:
+    input:
+        r1=lambda wildcards: samples_dict[wildcards.sample][0],
+        r2=lambda wildcards: samples_dict[wildcards.sample][1]
+    output:
+        r1_link='raw_data/{sample}_R1.fastq.gz',
+        r2_link='raw_data/{sample}_R2.fastq.gz'
+    shell:
+        """
+        ln -s {input.r1} {output.r1_link}
+        ln -s {input.r2} {output.r2_link}
+        """
+
+rule fastp:
+    input:
+        r1='raw_data/{sample}_R1.fastq.gz',
+        r2='raw_data/{sample}_R2.fastq.gz'
+    output:
+        r1_out='fastp/{sample}_filtered_R1.fastq.gz',
+        r2_out='fastp/{sample}_filtered_R2.fastq.gz'
+    params:
+        quality='20',
+        json='fastp/{sample}_fastp.json',
+        html='fastp/{sample}_fastp.html'
+    threads: 4
+    shell:
+        'fastp --thread {threads} -q {params.quality} -i {input.r1} -o {output.r1_out} -I {input.r2} -O {output.r2_out} -j {params.json} -h {params.html}'
+
+
+rule fastqc_r1:
+    input: 'fastp/{sample}_filtered_R1.fastq.gz'
+    output:
+        html='fastqc/{sample}_R1/fastqc_report.html'
+    params:
+        outdir= lambda wildcards: 'fastqc/' + wildcards.sample + '_R1'
+    shell:
+        'falco -o {params.outdir} {input} '
+
+rule fastqc_r2:
+    input: 'fastp/{sample}_filtered_R2.fastq.gz'
+    output:
+        html='fastqc/{sample}_R2/fastqc_report.html'
+    params:
+        outdir= lambda wildcards: 'fastqc/' + wildcards.sample + '_R2'
+    shell:
+        'falco -o {params.outdir} {input} '
+
+rule merge_samples:
+    input:
+        r1=expand('fastp/{sample}_filtered_R1.fastq.gz', sample=all_samples),
+        r2=expand('fastp/{sample}_filtered_R2.fastq.gz', sample=all_samples)
+    output:
+        r1_merged='merged/input_r1.fastq',
+        r2_merged='merged/input_r2.fastq'
+    shell:
+        """
+        seqkit seq -i {input.r1} | awk '{{if(NR%4==1) {{print $0 "/1"}} else {{print}} }}' > merged/input_r1.fastq
+        seqkit seq -i {input.r2} | awk '{{if(NR%4==1) {{print $0 "/2"}} else {{print}} }}' > merged/input_r2.fastq
+        """
+
+rule trinty_asm:
+    input:
+        r1='merged/input_r1.fastq',
+        r2='merged/input_r2.fastq'
+    output:
+        transcripts='trinity.Trinity.fasta',
+        genemap='trinity.Trinity.fasta.gene_trans_map'
+    params:
+        trinity_dir='trinity',
+        library='RF'
+    threads: 32
+    shell:
+        """
+        Trinity --seqType fq --max_memory 128G --left {input.r1} --right {input.r2}  --SS_lib_type {params.library}  --CPU {threads} --output {params.trinity_dir} --full_cleanup 
+        """
+
+# post-processing
+
+
+# https://github.com/TransDecoder/TransDecoder/wiki
+rule transdecoder_orf_prediction:
+    input:
+        transcripts='trinity.Trinity.fasta',
+        genemap='trinity.Trinity.fasta.gene_trans_map'
+    output:
+        pep="transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.pep",
+        cds="transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.cds",
+        bed="transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.bed"
+    params:
+        min_pro_len="100",
+    shell:
+        """
+        TransDecoder.LongOrfs  -t {input.transcripts} --gene_trans_map {input.genemap} -m {params.min_pro_len} --output_dir transdecoder.standard.code && \
+        TransDecoder.Predict  -t {input.transcripts} --output_dir transdecoder.standard.code
+        """
+
+
+rule trinity_salmon_index:
+    input:
+        transcripts='trinity.Trinity.fasta'
+    output:
+        index='trinity_salmon_index/',
+        flag="trinity_salmon_index.done"
+    params:
+        index_base="trinity_salmon_index"
+    shell:
+        """
+        salmon index --index {params.index_base}  --transcripts {input.transcripts} && touch {output.flag}
+        """
+
+rule trinity_salmon_count:
+    input:
+        r1='fastp/{sample}_filtered_R1.fastq.gz',
+        r2='fastp/{sample}_filtered_R2.fastq.gz',
+        index='trinity_salmon_index.done'
+    output:
+        count='salmon/{sample}_quant.sf'
+    params:
+        index_base="trinity_salmon_index",
+        library="ISR" # https://salmon.readthedocs.io/en/latest/library_type.html ISR for dUTP method
+    threads: 16
+    shell:
+        """
+        salmon quant -i {params.index_base} -l {params.library}  -1 {input.r1} -2 {input.r2} -p {threads} -o salmon/{wildcards.sample} && mv salmon/{wildcards.sample}/quant.sf {output.count}
+        """
+
+rule trinity_filter_transcripts:
+    input:
+        transcripts='trinity.Trinity.fasta',
+        transdecoder='transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.bed',
+        count=expand('salmon/{sample}_quant.sf', sample=all_samples)
+    output:
+        transcripts='trinity.filter.fasta'
+    params:
+        min_tpm=1
+    shell:
+        """
+        """
+
+rule trinity_filter_transcripts_with_isoseq :
+    input:
+        transcripts='trinity.Trinity.fasta',
+        transdecoder='transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.bed',
+        count=expand('salmon/{sample}_quant.sf', sample=all_samples)
+    output:
+        transcripts='trinity.filter.isoseq.fasta'
+    params:
+        min_tpm=1
+    shell:
+        """
+        """
+
+
+# 非标准的密码子表:  https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+# rule transdecoder_mito_orf_prediction:
+#     input:
+#         transcripts='trinity.Trinity.fasta',
+#         genemap='trinity.Trinity.fasta.gene_trans_map'
+#     output:
+#         cds="transdecoder.filter.fasta.transdecoder.cds",
+#         bed="transdecoder.filter.fasta.transdecoder.bed",
+#         pep="transdecoder.filter.fasta.transdecoder.pep"
+#     params:
+#         genetic_code="Mitochondrial-Chlorophycean"
+#         outdir="trinity.non.standard.code"
+#     shell:
+#         """
+#         TransDecoder.LongOrfs  -t {input.transcripts} --gene_trans_map  {input.genemap} --genetic_code {params.genetic_code} --output_dir {params.outdir} && \
+#         TransDecoder.Predict  -t {input.transcripts} --genetic_code {params.genetic_code} --output_dir {params.outdir} 
+#         """
+
+
+# https://github.com/trinityrnaseq/trinityrnaseq/wiki/SuperTranscripts
+rule get_super_transripts:
+    input: 'trinity.Trinity.fasta',
+    output: 'trinity_genes.fasta'
+    shell:
+        """
+        $TRINITY_HOME/Analysis/SuperTranscripts/Trinity_gene_splice_modeler.py {input}
+        """
+
+
+
+rule trinity_asm_rename:
+    input:
+        transcripts='trinity/Trinity.fasta'
+    output:
+        transcripts='trinity/trinity.fasta'
+    shell:
+        """
+        cp {input.transcripts} {output.transcripts}
+        """
+
+rule spades_asm_bowtie2_index:
+    input:
+        transcripts='spades/transcripts.fasta'
+    output:
+        index='ref/spades_index.1.bt2',
+        flag="ref/spades_index.done"
+    params:
+        index_base="ref/spades_index"
+    threads: 16
+    shell:
+        """
+        bowtie2-build --thread {threads} {input.transcripts} {params.index_base} && touch {output.flag}
+        """
+
+rule spades_asm_bowtie2_aln:
+    input:
+        flag="ref/spades_index.done",
+        r1='fastp/{sample}_filtered_R1.fastq.gz',
+        r2='fastp/{sample}_filtered_R2.fastq.gz'
+    output:
+        bam='spades/{sample}.bam'
+    params:
+        index_base="ref/spades_index",
+        bt2_params="--local --no-unal -k 10 " # "--all" will output all alignments, -k 10 will output up to 10 alignments, --local will output local alignments
+    threads: 16
+    shell:
+        """
+        bowtie2 --threads {threads}  {params.bt2_params} -x {params.index_base} -1 {input.r1} -2 {input.r2} | samtools view -bS - | samtools sort  > {output.bam}
+        """
+
