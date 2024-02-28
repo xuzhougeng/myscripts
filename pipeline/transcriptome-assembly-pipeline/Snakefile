@@ -52,12 +52,17 @@ rule fastp:
         r1_out='fastp/{sample}_filtered_R1.fastq.gz',
         r2_out='fastp/{sample}_filtered_R2.fastq.gz'
     params:
-        quality='20',
+        min_len='50',
+        window_size='4',
+        window_mean_quality='20',
         json='fastp/{sample}_fastp.json',
         html='fastp/{sample}_fastp.html'
     threads: 4
     shell:
-        'fastp --thread {threads} -q {params.quality} -i {input.r1} -o {output.r1_out} -I {input.r2} -O {output.r2_out} -j {params.json} -h {params.html}'
+        """
+        fastp --thread {threads}  -5 -3 --cut_window_size {params.window_size} --cut_mean_quality {params.window_mean_quality}  --length_required {params.min_len} \
+        -i {input.r1} -o {output.r1_out} -I {input.r2} -O {output.r2_out} -j {params.json} -h {params.html}
+        """
 
 
 rule fastqc_r1:
@@ -91,7 +96,40 @@ rule merge_samples:
         seqkit seq -i {input.r2} | awk '{{if(NR%4==1) {{print $0 "/2"}} else {{print}} }}' > merged/input_r2.fastq
         """
 
-rule trinty_asm:
+# pacbio iso-seq process
+rule isoseq_ccs:
+    input:
+        subreads=""
+    output:
+        ccs=""
+    shell:
+        """
+        lima lima.HR_bc1003T--HR_bc1003T.bam  primer.fa  fl.bam --isoseq --peek-guess
+        """
+
+rule isoseq_refine:
+    input:
+        bam=""
+    output:
+    shell:
+        """
+        isoseq3 refine --require-polya {input.bam} {input.primer} flnc.bam
+        """
+
+rule bam2fasta:
+    input:
+        bam=""
+    output:
+        fasta=""
+    shell:
+        """
+        samtools fasta {input.bam} > {output.fasta}
+        """
+
+
+
+# Trinity assembly with only paired-end reads
+rule trinty_asm_sr:
     input:
         r1='merged/input_r1.fastq',
         r2='merged/input_r2.fastq'
@@ -106,6 +144,25 @@ rule trinty_asm:
         """
         Trinity --seqType fq --max_memory 128G --left {input.r1} --right {input.r2}  --SS_lib_type {params.library}  --CPU {threads} --output {params.trinity_dir} --full_cleanup 
         """
+
+# trinity assembly with long reads
+rule trinty_asm_lr:
+    input:
+        r1='merged/input_r1.fastq',
+        r2='merged/input_r2.fastq',
+        lr='long_reads.fasta'
+    output:
+        transcripts='trinity_lr.Trinity.fasta',
+        genemap='trinity_lr.Trinity.fasta.gene_trans_map'
+    params:
+        trinity_dir='trinity_lr',
+        library='RF'
+    threads: 32
+    shell:
+        """
+        Trinity --seqType fq --max_memory 128G   --left {input.r1} --right {input.r2}  --long_reads {input.lr}  --SS_lib_type {params.library}  --CPU {threads} --output {params.trinity_dir} --full_cleanup 
+        """
+
 
 # post-processing
 
@@ -147,21 +204,21 @@ rule trinity_salmon_count:
         r2='fastp/{sample}_filtered_R2.fastq.gz',
         index='trinity_salmon_index.done'
     output:
-        count='salmon/{sample}_quant.sf'
+        gene_count='salmon/{sample}_quant.sf'
     params:
         index_base="trinity_salmon_index",
         library="ISR" # https://salmon.readthedocs.io/en/latest/library_type.html ISR for dUTP method
     threads: 16
     shell:
         """
-        salmon quant -i {params.index_base} -l {params.library}  -1 {input.r1} -2 {input.r2} -p {threads} -o salmon/{wildcards.sample} && mv salmon/{wildcards.sample}/quant.sf {output.count}
+        salmon quant -i {params.index_base} -l {params.library}  -1 {input.r1} -2 {input.r2} -p {threads} -o salmon/{wildcards.sample} && mv salmon/{wildcards.sample}/quant.sf {output.gene_count}
         """
 
 rule trinity_filter_transcripts:
     input:
         transcripts='trinity.Trinity.fasta',
         transdecoder='transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.bed',
-        count=expand('salmon/{sample}_quant.sf', sample=all_samples)
+        gene_counts=expand('salmon/{sample}_quant.sf', sample=all_samples)
     output:
         transcripts='trinity.filter.fasta'
     params:
@@ -170,11 +227,11 @@ rule trinity_filter_transcripts:
         """
         """
 
-rule trinity_filter_transcripts_with_isoseq :
+rule trinity_filter_transcripts_with_isoseq:
     input:
         transcripts='trinity.Trinity.fasta',
         transdecoder='transdecoder.standard.code/trinity.Trinity.fasta.transdecoder.bed',
-        count=expand('salmon/{sample}_quant.sf', sample=all_samples)
+        gene_counts=expand('salmon/{sample}_quant.sf', sample=all_samples)
     output:
         transcripts='trinity.filter.isoseq.fasta'
     params:

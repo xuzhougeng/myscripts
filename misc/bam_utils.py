@@ -94,6 +94,116 @@ def filter_bam_by_cb_single(input_bam, output_dir, barcodes):
     logging.info(f"Processed BAM file into {len(barcodes)} separate files based on barcodes.")
 
 
+
+# bam compare by read name
+import pysam
+import concurrent.futures
+import pickle
+
+def generate_hierarchy_dict_for_bam(bam_file_path, tag_value):
+    hierarchy_dict = {}
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
+        for read in bam_file:
+            components = read.query_name.split(":")[3:]
+            update_hierarchy_dict(hierarchy_dict, components, tag_value)
+    return hierarchy_dict
+
+def update_hierarchy_dict(hierarchy_dict, components, value):
+    if len(components) == 1:
+        hierarchy_dict[components[0]] = value
+    else:
+        if components[0] not in hierarchy_dict:
+            hierarchy_dict[components[0]] = {}
+        update_hierarchy_dict(hierarchy_dict[components[0]], components[1:], value)
+
+def check_existence_in_hierarchy_dict(hierarchy_dict, components):
+    current_dict = hierarchy_dict
+    for component in components:
+        if component in current_dict:
+            current_dict = current_dict[component]
+        else:
+            return False  # Not found
+    return True  # Found
+
+def process_bam_and_write_unique(bam_file_path, output_file_path, other_hierarchy_dict):
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_file, \
+        pysam.AlignmentFile(output_file_path, "wb", template=bam_file) as out_file:
+        for read in bam_file:
+            components = read.query_name.split(":")[3:]
+            if not check_existence_in_hierarchy_dict(other_hierarchy_dict, components):
+                out_file.write(read)
+
+def bam_compare_by_read_name(bam1_file_path, bam2_file_path):
+
+    """
+    read-name pattern: A00234:1245:HHKYLDSX7:4:2415:5755:7044
+    """
+
+    out_bam1_name = bam1_file_path.replace(".bam", "_unique.bam")
+    out_bam2_name = bam2_file_path.replace(".bam", "_unique.bam")
+
+
+    # 使用ThreadPoolExecutor并行生成两个BAM文件的递归字典
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_bam1 = executor.submit(generate_hierarchy_dict_for_bam, bam1_file_path, 1)
+        future_bam2 = executor.submit(generate_hierarchy_dict_for_bam, bam2_file_path, 2)
+        hierarchy_dict_bam1 = future_bam1.result()
+        hierarchy_dict_bam2 = future_bam2.result()
+
+    # save the hierarchy_dict_bam1 and hierarchy_dict_bam2 to file as pickle
+    out_bam1_pickle = bam1_file_path.replace(".bam", "_hierarchy_dict.pickle")
+    out_bam2_pickle = bam2_file_path.replace(".bam", "_hierarchy_dict.pickle")
+    with open(out_bam1_pickle, "wb") as f:
+        pickle.dump(hierarchy_dict_bam1, f)
+    with open(out_bam2_pickle, "wb") as f:
+        pickle.dump(hierarchy_dict_bam2, f)
+
+
+    # 使用ThreadPoolExecutor并行处理两个BAM文件
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(process_bam_and_write_unique, bam1_file_path, out_bam1_name, hierarchy_dict_bam2)
+        executor.submit(process_bam_and_write_unique, bam2_file_path, out_bam2_name, hierarchy_dict_bam1)
+
+
+
+
+
+# bam_compare_by_read_name_set
+def read_bam_file(bam_file_path):
+    read_names_set = set()
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_file:
+        # 没比过加和不加.fetch()的速度，我猜直接遍历AlignmentFile会快一点
+        for read in bam_file:  
+            read_names_set.add(read.query_name)
+    return read_names_set
+
+def write_unique_reads(bam_file_path, out_bam_name, unique_reads_set):
+    with pysam.AlignmentFile(bam_file_path, "rb") as bam_file, pysam.AlignmentFile(out_bam_name, "wb", template=bam_file) as out_file:
+        for read in bam_file: 
+            if read.query_name in unique_reads_set:
+                out_file.write(read)
+
+def bam_compare_by_read_name_set(bam1_file_path, bam2_file_path):
+    # 生成输出文件名
+    out_bam1_name = bam1_file_path.replace(".bam", "_unique.bam")
+    out_bam2_name = bam2_file_path.replace(".bam", "_unique.bam")
+
+    # 使用ProcessPoolExecutor并行读取BAM文件
+    with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
+        future_bam1 = executor.submit(read_bam_file, bam1_file_path)
+        future_bam2 = executor.submit(read_bam_file, bam2_file_path)
+        read_names_set1, read_names_set2 = future_bam1.result(), future_bam2.result()
+
+    # 使用集合运算找到各自独有的read-names
+    unique_to_bam1 = read_names_set1 - read_names_set2
+    unique_to_bam2 = read_names_set2 - read_names_set1
+
+    # 并行写入独有的reads到新的BAM文件
+    with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
+        executor.submit(write_unique_reads, bam1_file_path, out_bam1_name, unique_to_bam1)
+        executor.submit(write_unique_reads, bam2_file_path, out_bam2_name, unique_to_bam2)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Filter a BAM file by cell barcodes and split into separate files based on barcodes.")
 
