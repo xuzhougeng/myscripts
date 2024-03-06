@@ -207,7 +207,10 @@ if __name__ == "__main__":
 
     # 根据提供的子命令调用相应的函数
     if 'func' in args:
-        args.func(**vars(args))
+        func = args.func
+        kwargs = vars(args)
+        del kwargs['func']  # 删除func关键字参数
+        func(**kwargs)  # 使用更新后的参数字典调用函数
     else:
         # 如果没有提供子命令，打印帮助信息
         parser.print_help()
