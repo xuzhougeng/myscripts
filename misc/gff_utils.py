@@ -10,7 +10,7 @@ def extract(items, key):
     """Extract a value for a given key from a list of key-value pairs."""
     for item in items:
         if item.startswith(key):
-            return item[len(key)+1:]
+            return item[len(key):]
     return ''
 
 def preprocess(item, gene_ids, feature_maps, feature_infos):
