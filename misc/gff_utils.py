@@ -1,3 +1,105 @@
+import re
+import argparse
+
+
+## fix the gff3 file
+def parse_gff3_line( parts ):
+    """解析GFF3文件的一行，返回一个字典"""
+    attributes_text = parts[8]
+    attributes = {}
+    for attr in attributes_text.split(';'):
+        key, value = attr.split('=') if '=' in attr else (attr, '')
+        key = key.strip()
+        value = value.strip()
+        if len(value) > 0 and len(key) > 0:
+            attributes[key] = value
+    # 处理科学计数法
+    start = int(float(parts[3])) if re.match(r'\d+\.?\d*e[\+\-]?\d+', parts[3]) else parts[3]
+    end = int(float(parts[4])) if re.match(r'\d+\.?\d*e[\+\-]?\d+', parts[4]) else parts[4]
+
+    return {
+        'seqid': parts[0],
+        'source': parts[1],
+        'type': parts[2],
+        'start': str(start),
+        'end': str(end),
+        'score': parts[5],
+        'strand': parts[6],
+        'phase': parts[7],
+        'attributes': attributes
+    }
+
+def read_gff3(filename):
+    """读取GFF3文件，返回一个包含所有行的字典"""
+    gene_dict = {} # 记录基因
+    gene2mRAN_dict = {} # 记录基因对应的mRNA
+    mRNA2other_dict = {} # 记录mRNA对应的其他特征
+
+    for line in open(filename):
+        line = line.strip()
+        if line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) < 9:
+            continue
+        feature = parse_gff3_line(parts)
+        if feature['type'] == 'gene':
+            gene_dict[feature['attributes']['ID']] = feature
+        elif feature['type'] == 'mRNA' or feature['type'] == 'transcript':
+            gene_id = feature['attributes']['Parent']
+            if gene_id not in gene2mRAN_dict:
+                gene2mRAN_dict[gene_id] = []
+            gene2mRAN_dict[gene_id].append(feature)
+        else:
+            mRNA_id = feature['attributes']['Parent']
+            if mRNA_id not in mRNA2other_dict:
+                mRNA2other_dict[mRNA_id] = []
+            mRNA2other_dict[mRNA_id].append(feature)
+    
+    return {
+        'gene': gene_dict,
+        'mRNA': gene2mRAN_dict,
+        'other': mRNA2other_dict
+    }
+
+
+def add_ids_to_features(mRNA2other_dict):
+    """检查每个特征是否有ID，如果没有，则添加ID"""
+    for mRNA_id, features in mRNA2other_dict.items():
+        for index, feature in enumerate(features):
+            if 'ID' not in feature['attributes']:
+                # 构建一个唯一的ID：使用mRNA的ID，特征的类型和索引
+                unique_id = f"{mRNA_id}_{feature['type']}_{index}"
+                feature['attributes']['ID'] = unique_id
+
+def build_gff3_line(feature):
+    """构建GFF3文件的一行"""
+    attributes = feature['attributes']
+    attributes_text = ';'.join([f"{key}={value}" for key, value in attributes.items()])
+    return f"{feature['seqid']}\t{feature['source']}\t{feature['type']}\t{feature['start']}\t{feature['end']}\t{feature['score']}\t{feature['strand']}\t{feature['phase']}\t{attributes_text}"
+
+def build_gff3_lines(gff_dict):
+    gene, mRNA, other = gff_dict['gene'], gff_dict['mRNA'], gff_dict['other']
+    lines = []
+    for gene_id, gene_feature in gene.items():
+        lines.append(build_gff3_line(gene_feature))
+        for mRNA_feature in mRNA[gene_id]:
+            lines.append(build_gff3_line(mRNA_feature))
+            for other_feature in other[mRNA_feature['attributes']['ID']]:
+                lines.append(build_gff3_line(other_feature))
+    return lines
+
+
+def reformat_gff(input_gff, output_gff):
+    gff_dict = read_gff3(input_gff)
+    add_ids_to_features(gff_dict['other'])
+    gff_lines = build_gff3_lines(gff_dict)
+    with open(output_gff, 'w') as f:
+        for line in gff_lines:
+            f.write(line + '\n')
+
+
+# convert gff3 to gtf
 def split(input_string, delim='\t'):
     """Split the string by a delimiter and return a list of strings."""
     return input_string.split(delim)
@@ -64,15 +166,7 @@ def modify(item, gene_id, transcript_id):
         raise ValueError("Unknown feature")
     return item
 
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <gff_filename> <gtf_filename>")
-        sys.exit(1)
-
-    gff_filename = sys.argv[1]
-    gtf_filename = sys.argv[2]
+def convert_gff_to_gtf(gff_filename, gtf_filename):
 
     gene_ids = []
     feature_maps = {}
@@ -88,3 +182,32 @@ if __name__ == "__main__":
         
         for gene_id in gene_ids:
             gtf_file.write(generate_output(gene_id, feature_maps, feature_infos) + '\n')
+
+    
+
+if __name__ == "__main__":
+    # 创建解析器
+    parser = argparse.ArgumentParser(description='GFF Tools')
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    # 创建reformat子命令
+    parser_reformat = subparsers.add_parser('reformat', help='Reformat a GFF file')
+    parser_reformat.add_argument('gff_filename', type=str, help='The GFF filename to reformat')
+    parser_reformat.add_argument('output_filename', type=str, help='The output filename')
+    parser_reformat.set_defaults(func=reformat_gff)
+
+    # 创建convert子命令
+    parser_convert = subparsers.add_parser('convert', help='Convert a GFF file to GTF format')
+    parser_convert.add_argument('gff_filename', type=str, help='The GFF filename to convert')
+    parser_convert.add_argument('gtf_filename', type=str, help='The GTF filename')
+    parser_convert.set_defaults(func=convert_gff_to_gtf)
+
+    # 解析命令行参数
+    args = parser.parse_args()
+
+    # 根据提供的子命令调用相应的函数
+    if 'func' in args:
+        args.func(**vars(args))
+    else:
+        # 如果没有提供子命令，打印帮助信息
+        parser.print_help()
