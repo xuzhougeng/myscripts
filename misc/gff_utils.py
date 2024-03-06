@@ -10,6 +10,7 @@ def extract(items, key):
     """Extract a value for a given key from a list of key-value pairs."""
     for item in items:
         if item.startswith(key):
+            # the key is ID=, Parent=, etc. so we need to remove the key from the value
             return item[len(key):]
     return ''
 
