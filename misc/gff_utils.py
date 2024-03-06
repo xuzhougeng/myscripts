@@ -90,11 +90,11 @@ def build_gff3_lines(gff_dict):
     return lines
 
 
-def reformat_gff(gff_filename, output_fielname):
+def reformat_gff(gff_filename, output_filename):
     gff_dict = read_gff3(gff_filename)
     add_ids_to_features(gff_dict['other'])
     gff_lines = build_gff3_lines(gff_dict)
-    with open(output_fielname, 'w') as f:
+    with open(output_filename, 'w') as f:
         for line in gff_lines:
             f.write(line + '\n')
 
