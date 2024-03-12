@@ -120,10 +120,10 @@ def create_adjusted_gtf(gtf_file, split_info, output_file):
     """
     # Preprocess split_info for quick access during adjustments
     split_map = {}
-    for chrom, start, _, new_chrom in split_info:
+    for chrom, start, end, new_chrom in split_info:
         if chrom not in split_map:
             split_map[chrom] = []
-        split_map[chrom].append((start, new_chrom))
+        split_map[chrom].append((start, end, new_chrom))
     
     with open(output_file, 'w') as outfile:
         with open(gtf_file, 'r') as infile:
@@ -132,10 +132,9 @@ def create_adjusted_gtf(gtf_file, split_info, output_file):
                     continue  # Ignore header lines
                 parts = line.strip().split('\t')
                 chrom, feature_start, feature_end = parts[0], int(parts[3]), int(parts[4])
-
                 if chrom in split_map:
-                    for start, new_chrom in split_map[chrom]:
-                        if feature_start >= start:
+                    for start, end, new_chrom in split_map[chrom]:
+                        if feature_start >= start and feature_end <= end:
                             adjusted_start = feature_start - start
                             adjusted_end = feature_end - start
                             parts[0] = new_chrom
