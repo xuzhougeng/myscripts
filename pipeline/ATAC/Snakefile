@@ -14,6 +14,21 @@ import pandas as pd
 import numpy as np
 pd.set_option("display.max_columns", None)
 
+def read_csv_with_autodetect_sep(filepath):
+    # 定义可能的分隔符列表
+    possible_seps = [',', '\t', ';', '|', ' ']
+    for sep in possible_seps:
+        try:
+            # 尝试使用当前分隔符读取文件
+            df = pd.read_csv(filepath, index_col=0, sep=sep)
+            # 如果文件至少有两列，则假定成功读取
+            if df.shape[1] > 1:
+                return df
+        except Exception as e:
+            # 如果在尝试读取时出现错误，继续尝试下一个分隔符
+            continue
+    raise ValueError("无法自动检测文件的分隔符。")
+
 ## reference file configuration
 #configfile: "config.yaml"
 FASTA    = config['FASTA']
@@ -49,7 +64,7 @@ QC_DIR    = join("report")
 #shell("mkdir -p {CLEAN_DIR} {ALIGN_DIR} {PEAK_DIR} {BW_DIR} {VIS_DIR} {TMPDIR} {LOGDIR} {QC_DIR} ")
 
 ## The list of samples to be processed
-sampleTable = pd.read_csv(SAMPLES, index_col=0, sep=",")
+sampleTable = read_csv_with_autodetect_sep(SAMPLES)
 samples = sampleTable.index.tolist()
 
 
