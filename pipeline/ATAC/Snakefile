@@ -21,16 +21,22 @@ def read_csv_with_autodetect_sep(filepath):
         try:
             # 尝试使用当前分隔符读取文件
             df = pd.read_csv(filepath, index_col=0, sep=sep)
-            # 如果文件至少有两列，则假定成功读取
+            # 检查是否成功读取了多列数据
             if df.shape[1] > 1:
-                return df
+                # 检查 DataFrame 中是否存在 NaN 值
+                if not df.isnull().values.any():
+                    # 如果没有 NaN 值，认为成功读取
+                    return df
+                else:
+                    # 如果存在 NaN 值，可能是因为分隔符错误，继续尝试下一个分隔符
+                    continue
         except Exception as e:
             # 如果在尝试读取时出现错误，继续尝试下一个分隔符
             continue
-    raise ValueError("无法自动检测文件的分隔符。")
+    raise ValueError("无法自动检测文件的分隔符，或文件内容格式有误。")
 
 ## reference file configuration
-#configfile: "config.yaml"
+configfile: "config.yaml"
 FASTA    = config['FASTA']
 FASTA_BASE = basename(FASTA).split('.')[0]
 INDEX    = join("reference", FASTA_BASE)

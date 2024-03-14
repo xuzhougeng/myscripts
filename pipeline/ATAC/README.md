@@ -10,7 +10,7 @@ git clone https://github.com/xuzhougeng/myscripts.git
 
 ```bash
 # recommend mamba 
-conda create -c bioconda -c conda-forge -n atac-seq fastp sambamba bowtie2 samtools deeptools macs2  htslib
+conda create -c bioconda -c conda-forge -n atac-seq fastp sambamba bowtie2 samtools deeptools macs2  htslib snakemake
 ```
 
 保证能够调用 fastp, sambamba, bowtie2, samtools, deeptools, macs2即可, 例如，如果管理可以允许使用module管理加载
