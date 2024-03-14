@@ -9,10 +9,20 @@ git clone https://github.com/xuzhougeng/myscripts.git
 第二步: 创建分析环境
 
 ```bash
-conda create -c bioconda -c conda-forge -n atac-seq fastp sambamba bowtie2 samtools deeptools macs2 
+# recommend mamba 
+conda create -c bioconda -c conda-forge -n atac-seq fastp sambamba bowtie2 samtools deeptools macs2  htslib
 ```
 
-或者保证能够调用 fastp, sambamba, bowtie2, samtools, deeptools, macs2即可, 利用通过module管理加载
+另外还需要编译我写的两个工具
+
+```bash
+conda activate atac-seq
+gcc -o bam_basic_stats bam_basic_stats.c -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib -lhts -Wl,-rpath,$CONDA_PREFIX/lib
+gcc -o bam_frag_stats bam_frag_stats.c -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib -lhts -Wl,-rpath,$CONDA_PREFIX/lib
+```
+
+
+或者保证能够调用 fastp, sambamba, bowtie2, samtools, deeptools, macs2即可, 例如，如果管理可以允许使用module管理加载
 
 ```bash
 module load bowtie/2.3.4.3
@@ -35,7 +45,7 @@ REMOVE_PLASTOME: True/False/或者不包含质体的序列编号的txt文件
 
 FASTA对应的fasta文件名中间不要有多余的 "."，例如 A.thaliana.fa, 请改成 Athaliana.fa或 A_thaliana.fa
 
-REMOVE_PLASTOME: 
+REMOVE_PLASTOME:
 
 如果输入的是False或者空白, 表示不过滤
 

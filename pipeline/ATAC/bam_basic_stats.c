@@ -32,12 +32,13 @@ int main(int argc, char **argv)
     if (argc == 1){
         fprintf(stderr, "Usage: %s input.bam  [stats.txt] [organelle genome size] \n;", argv[0]);
         fprintf(stderr, "e.g %s input.bam stats.txt 20000 \n;", argv[0]);
+        exit(2);
     }
 
     char *bam_fn = argv[1];
     if (! is_bam(bam_fn)){
         fprintf(stderr, "%s not a BAM file !\n", argv[1]);
-        exit(0);
+        exit(2);
     }
 
     char *stats_out_file = rename_suffix( bam_fn );

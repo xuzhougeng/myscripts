@@ -21,7 +21,7 @@ int main(int argc, char *argv[]){
 
   if ( argc == 1){
     fprintf(stderr, "Usage: %s input.bam  [frag_size.txt] \n", argv[0]);
-    exit(0);
+    exit(2);
   }
   char *frag_size_fname;
   if (argc == 2){
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]){
 
   if (! is_bam(bam_fn) ){
         fprintf(stderr, "%s not a BAM file!\n", argv[1]);
-        exit(0);
+        exit(2);
   } 
   fprintf(stderr, "Process %s !\n", argv[1]);
 
